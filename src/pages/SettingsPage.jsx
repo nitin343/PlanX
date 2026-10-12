@@ -16,7 +16,7 @@ import {
 import AlarmsManager from '../components/AlarmsManager';
 
 export default function SettingsPage() {
-  const { user, profile, setIsAuthModalOpen, signOut, openLogin } = useAuth();
+  const { user, profile, setIsAuthModalOpen, signOut, openLogin, syncAiKeyToCloud } = useAuth();
   const [settings, setSettings] = useState(() => storage.getAiSettings());
   const [alarmConfig, setAlarmConfig] = useState(() => storage.getAlarmSettings());
   const [notifPermission, setNotifPermission] = useState(() => getNotificationPermissionStatus());
@@ -28,9 +28,12 @@ export default function SettingsPage() {
   const [isTestingSiemens, setIsTestingSiemens] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     storage.saveAiSettings(settings);
     storage.saveAlarmSettings(alarmConfig);
+    if (syncAiKeyToCloud) {
+      await syncAiKeyToCloud(settings.geminiKey);
+    }
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2500);
   };
@@ -63,6 +66,9 @@ export default function SettingsPage() {
     setTestResult(null);
     try {
       storage.saveAiSettings(settings);
+      if (syncAiKeyToCloud) {
+        await syncAiKeyToCloud(settings.geminiKey);
+      }
       const res = await callGemini('Say "KRATOS ONLINE: Systems calibrated." in 5 words.');
       setTestResult({ success: true, message: res });
     } catch (err) {
@@ -181,9 +187,17 @@ export default function SettingsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {/* API Key */}
           <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '6px' }}>
-              Gemini API Key
-            </label>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                Gemini API Key
+              </label>
+              {user?.id && (
+                <span className="badge badge-emerald" style={{ fontSize: '9.5px', padding: '2px 6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Shield size={10} />
+                  <span>Encrypted Cloud Sync Active</span>
+                </span>
+              )}
+            </div>
             <input
               type="password"
               className="input-field"
@@ -192,6 +206,9 @@ export default function SettingsPage() {
               placeholder="Paste AIzaSy... key here"
               id="input-gemini-key"
             />
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '5px 0 0 0' }}>
+              🔒 Encrypted with user-specific cryptographic cipher before saving to database. Syncs automatically across all your devices.
+            </p>
           </div>
 
           {/* Preferred Model */}

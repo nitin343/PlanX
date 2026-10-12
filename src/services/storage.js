@@ -345,12 +345,14 @@ export const storage = {
     storage.saveSkillCards(cards);
   },
 
-  // Security Vault: Cipher encryption to prevent plaintext key exposure in localStorage
-  _cipherSalt: 'planx_kratos_vault_key_2026',
-  _encryptVal: (plainText) => {
+  // Security Vault: Cipher encryption to prevent plaintext key exposure in localStorage and database
+  _getSalt: (userId = '') => {
+    return `planx_kratos_vault_${userId ? userId.slice(0, 16) : 'operator'}_2026`;
+  },
+  _encryptVal: (plainText, userId = '') => {
     if (!plainText) return '';
     try {
-      const salt = storage._cipherSalt;
+      const salt = storage._getSalt(userId);
       const obfuscated = plainText.split('').map((c, i) => 
         String.fromCharCode(c.charCodeAt(0) ^ salt.charCodeAt(i % salt.length))
       ).join('');
@@ -359,17 +361,27 @@ export const storage = {
       return plainText;
     }
   },
-  _decryptVal: (cipherText) => {
+  _decryptVal: (cipherText, userId = '') => {
     if (!cipherText) return '';
     if (!cipherText.startsWith('enc::')) return cipherText; // Backwards compatible with existing plaintext
     try {
-      const salt = storage._cipherSalt;
+      // 1. Try with user-specific salt
+      const salt = storage._getSalt(userId);
       const raw = decodeURIComponent(atob(cipherText.slice(5)));
       return raw.split('').map((c, i) => 
         String.fromCharCode(c.charCodeAt(0) ^ salt.charCodeAt(i % salt.length))
       ).join('');
     } catch {
-      return cipherText;
+      // 2. Fallback to generic legacy salt if needed
+      try {
+        const legacySalt = 'planx_kratos_vault_key_2026';
+        const raw = decodeURIComponent(atob(cipherText.slice(5)));
+        return raw.split('').map((c, i) => 
+          String.fromCharCode(c.charCodeAt(0) ^ legacySalt.charCodeAt(i % legacySalt.length))
+        ).join('');
+      } catch {
+        return cipherText;
+      }
     }
   },
 

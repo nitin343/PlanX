@@ -11,14 +11,83 @@ export function AuthProvider({ children }) {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
 
+  // Two-way encrypted sync for User Profile & Gemini API Key
+  const syncCloudProfile = async (appUser) => {
+    if (!isSupabaseConfigured || !supabase || !appUser?.id) return;
+    try {
+      const { data: cloudProf, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', appUser.id)
+        .single();
+
+      const curAi = storage.getAiSettings();
+
+      if (!error && cloudProf) {
+        // 1. If cloud has an encrypted Gemini API key, decrypt and store locally
+        if (cloudProf.gemini_api_key) {
+          const decrypted = storage._decryptVal(cloudProf.gemini_api_key, appUser.id);
+          if (decrypted && decrypted.trim()) {
+            storage.saveAiSettings({ ...curAi, geminiKey: decrypted.trim() });
+          }
+        } else if (curAi.geminiKey && curAi.geminiKey.trim()) {
+          // Cloud has no key, but local device has one -> upload encrypted to cloud!
+          const encrypted = storage._encryptVal(curAi.geminiKey.trim(), appUser.id);
+          await supabase.from('profiles').update({
+            gemini_api_key: encrypted,
+            updated_at: new Date().toISOString(),
+          }).eq('id', appUser.id);
+        }
+
+        // 2. Sync profile fields
+        const localProf = storage.getProfile();
+        const merged = {
+          ...localProf,
+          name: cloudProf.full_name || localProf.name,
+          streakCount: cloudProf.streak_count ?? localProf.streakCount,
+        };
+        storage.saveProfile(merged);
+        setProfile(merged);
+      } else if (error && (error.code === 'PGRST116' || error.message?.includes('No rows'))) {
+        // Row does not exist yet -> create row with encrypted key
+        const localProf = storage.getProfile();
+        const encrypted = curAi.geminiKey ? storage._encryptVal(curAi.geminiKey.trim(), appUser.id) : null;
+        await supabase.from('profiles').upsert({
+          id: appUser.id,
+          full_name: appUser.user_metadata?.full_name || appUser.email?.split('@')[0],
+          gemini_api_key: encrypted,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+    } catch (err) {
+      console.warn('Cloud profile sync note:', err.message);
+    }
+  };
+
+  const syncAiKeyToCloud = async (keyToSync) => {
+    if (!user?.id || !isSupabaseConfigured || !supabase) return;
+    try {
+      const encrypted = keyToSync ? storage._encryptVal(keyToSync.trim(), user.id) : null;
+      await supabase.from('profiles').upsert({
+        id: user.id,
+        gemini_api_key: encrypted,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.warn('Failed to sync encrypted key to cloud:', err.message);
+    }
+  };
+
   // Sync Supabase Auth session on mount and auth changes
   useEffect(() => {
     if (isSupabaseConfigured && supabase) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
+      supabase.auth.getSession().then(async ({ data: { session } }) => {
         const sbUser = session?.user ?? null;
         storage.setAuthUser(sbUser);
         setUser(sbUser);
         if (sbUser) {
+          await syncCloudProfile(sbUser);
           setProfile(storage.getProfile());
         }
         setLoading(false);
@@ -28,11 +97,12 @@ export function AuthProvider({ children }) {
         setLoading(false);
       });
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
         const sbUser = session?.user ?? null;
         storage.setAuthUser(sbUser);
         setUser(sbUser);
         if (sbUser) {
+          await syncCloudProfile(sbUser);
           setProfile(storage.getProfile());
         }
       });
@@ -87,6 +157,7 @@ export function AuthProvider({ children }) {
         if (!error && data?.user) {
           storage.setAuthUser(data.user);
           setUser(data.user);
+          await syncCloudProfile(data.user);
           setProfile(storage.getProfile());
           return data;
         }
@@ -317,6 +388,8 @@ export function AuthProvider({ children }) {
         signOut,
         updateProfile,
         incrementStreak,
+        syncAiKeyToCloud,
+        syncCloudProfile,
       }}
     >
       {children}
