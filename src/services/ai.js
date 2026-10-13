@@ -460,25 +460,50 @@ Your schedule is calibrated in the system. Get your ${sleepDurationHours} hours 
  * mutates storage (Daily Plan, Tasks, Goals, Habits, Skill Cards),
  * and returns clean user-facing speech along with executed action descriptors.
  */
+function sanitizeJsonString(str) {
+  if (!str) return '';
+  return str
+    .replace(/```(?:KRATOS_ACTIONS|json)?/gi, '')
+    .replace(/```/g, '')
+    .replace(/\/\/.*$/gm, '')
+    .replace(/,\s*([}\]])/g, '$1')
+    .trim();
+}
+
 export function processKratosReplyAndExecute(rawText, userPrompt = '') {
   if (!rawText) return { content: '', alarmData: null, executedActions: null };
 
   let cleanContent = rawText;
   let executedActions = null;
 
-  // Match ```KRATOS_ACTIONS ... ``` or ```json ... ``` blocks
-  const actionMatch = rawText.match(/```(?:KRATOS_ACTIONS|json)?\s*([\s\S]*?)```/i) 
-    || rawText.match(/(\{[\s\S]*"dailyPlan"[\s\S]*\})/i)
-    || rawText.match(/(\{[\s\S]*"goal"[\s\S]*\})/i)
-    || rawText.match(/(\{[\s\S]*"skillCards"[\s\S]*\})/i);
+  // 1. Collect all code block action payloads
+  const codeBlockRegex = /```(?:KRATOS_ACTIONS|json)?\s*([\s\S]*?)```/gi;
+  let codeBlockMatch;
+  const actionJsonCandidates = [];
 
-  if (actionMatch) {
+  while ((codeBlockMatch = codeBlockRegex.exec(rawText)) !== null) {
+    if (codeBlockMatch[1]) {
+      actionJsonCandidates.push(codeBlockMatch[1]);
+    }
+  }
+
+  // Remove code blocks from cleanContent
+  cleanContent = cleanContent.replace(/```(?:KRATOS_ACTIONS|json)?\s*[\s\S]*?```/gi, '').trim();
+
+  // Also check for raw un-fenced JSON action blocks in rawText
+  const rawActionRegex = /(\{[\s\S]*"(?:dailyPlan|goal|skillCards|tasks)"[\s\S]*\})/i;
+  const rawActionMatch = rawText.match(rawActionRegex);
+  if (rawActionMatch) {
+    actionJsonCandidates.push(rawActionMatch[1]);
+    cleanContent = cleanContent.replace(rawActionRegex, '').trim();
+  }
+
+  // Attempt to parse actions from candidates
+  const results = {};
+  for (const candidate of actionJsonCandidates) {
     try {
-      const jsonCandidate = actionMatch[1] || actionMatch[0];
-      const parsed = JSON.parse(jsonCandidate);
-      cleanContent = rawText.replace(actionMatch[0], '').trim();
-
-      const results = {};
+      const sanitized = sanitizeJsonString(candidate);
+      const parsed = JSON.parse(sanitized);
 
       // 1. Daily Plan Execution & Tasks Sync
       if (parsed.dailyPlan && parsed.dailyPlan.mustWin) {
@@ -618,17 +643,49 @@ export function processKratosReplyAndExecute(rawText, userPrompt = '') {
         storage.saveSkillCards(updatedCards);
         results.skillCards = newCards;
       }
-
-      if (Object.keys(results).length > 0) {
-        executedActions = results;
-      }
     } catch (parseErr) {
-      console.warn('Failed to parse KRATOS action block:', parseErr);
+      console.warn('Action block candidate parse notice:', parseErr.message);
     }
   }
 
+  if (Object.keys(results).length > 0) {
+    executedActions = results;
+  }
+
+  // 2. Safe-Guard: If cleanContent is empty or purely raw JSON, synthesize a commanding KRATOS message
+  if (!cleanContent.trim()) {
+    if (results.dailyPlan) {
+      cleanContent = `### ⚔️ KRATOS DAY BATTLE PLAN LOCKED\n\n> "${results.dailyPlan.aiMotivation || 'The battlefield belongs to those who take it by force.'}"\n\n#### 🎯 Non-Negotiable Must-Win\n* **${results.dailyPlan.mustWin}**\n\n${results.dailyPlan.shouldDo?.length ? `#### ⚡ Core Priorities (Should-Do)\n${results.dailyPlan.shouldDo.map(s => `* **${s}**`).join('\n')}\n\n` : ''}${results.dailyPlan.couldDo?.length ? `#### 🛡️ Bonus Targets (Could-Do)\n${results.dailyPlan.couldDo.map(c => `* ${c}`).join('\n')}\n\n` : ''}Tactical objectives deployed to your **Today Page** checklist. Execute without hesitation.`;
+    } else if (results.goal) {
+      cleanContent = `### 🎯 KRATOS STRATEGIC ROADMAP FORGED\n\n**${results.goal.title}**\n\n${results.goal.description}\n\n* Duration: **${results.goal.dayTotal} Days**\n* Category: **${results.goal.category.toUpperCase()}**\n\nRoadmap deployed to your **Goals Page**. Attack the arena now.`;
+    } else {
+      cleanContent = 'Tactical parameters calibrated. What is your next objective?';
+    }
+  } else if (cleanContent.trim().startsWith('{') && cleanContent.trim().endsWith('}')) {
+    // cleanContent itself was a raw JSON string! Convert it into formatted Markdown.
+    try {
+      const parsedObj = JSON.parse(sanitizeJsonString(cleanContent));
+      if (parsedObj.mustWin) {
+        cleanContent = `### ⚔️ KRATOS DAY BATTLE PLAN\n\n> "${parsedObj.motivation || 'The morning belongs to those who take it by force. Warriors execute.'}"\n\n#### 🎯 Non-Negotiable Must-Win\n* **${parsedObj.mustWin}**\n\n${Array.isArray(parsedObj.shouldDo) ? `#### ⚡ Core Priorities (Should-Do)\n${parsedObj.shouldDo.map(s => `* **${s}**`).join('\n')}\n\n` : ''}${Array.isArray(parsedObj.couldDo) ? `#### 🛡️ Bonus Targets (Could-Do)\n${parsedObj.couldDo.map(c => `* ${c}`).join('\n')}\n\n` : ''}Stand up and execute now.`;
+      } else if (parsedObj.score !== undefined) {
+        cleanContent = `### 🛡️ KRATOS COMBAT DEBRIEF\n\n**Day Combat Score:** **${parsedObj.score} / 100**\n\n${Array.isArray(parsedObj.wins) ? `#### 🏆 Battle Victories\n${parsedObj.wins.map(w => `* **${w}**`).join('\n')}\n\n` : ''}${Array.isArray(parsedObj.weaknesses) ? `#### ⚠️ Vulnerabilities\n${parsedObj.weaknesses.map(w => `* ${w}`).join('\n')}\n\n` : ''}> ${parsedObj.review || 'Rest, recover, and sharpen your blades for tomorrow.'}`;
+      } else if (parsedObj.explanation) {
+        cleanContent = `### 🔔 ALARM DIRECTIVE\n\n${parsedObj.explanation}`;
+      }
+    } catch (e) {
+      // If parsing fails, strip out raw brackets
+      cleanContent = cleanContent.replace(/^[\s\{]+|[\s\}]+$/g, '');
+    }
+  }
+
+  // Clean any remaining code markers or dangling artifacts
+  cleanContent = cleanContent
+    .replace(/```(?:KRATOS_ACTIONS|json)?/gi, '')
+    .replace(/```/g, '')
+    .trim();
+
   return {
-    content: cleanContent || rawText,
+    content: cleanContent,
     alarmData: null,
     executedActions,
   };
@@ -746,35 +803,66 @@ Look at your screen. Your roadmap, checklist tasks, and memory drills are live. 
   }
 
   if (p.includes('morning') || p.includes('plan')) {
-    return JSON.stringify({
-      mustWin: "Complete core architecture sprint & execute 45-min high intensity training",
-      shouldDo: [
-        "Solve 1 Medium LeetCode Dynamic Programming challenge",
-        "Deep Work: Review production telemetry & system design"
-      ],
-      couldDo: [
-        "Drill 5 spaced repetition memory cards",
-        "Review evening reading notes",
-        "Hydration check: reach 3.5 liters"
-      ],
-      motivation: "The morning belongs to those who take it by force. Weak men negotiate with their alarms; warriors execute. Lock in your Must-Win before noon. No excuses."
-    });
+    return `### ⚔️ KRATOS TACTICAL DAY BATTLE PLAN
+
+> The morning belongs to those who take it by force. Weak men negotiate with their alarms; warriors execute. Lock in your Must-Win before noon. No excuses.
+
+#### 🎯 Non-Negotiable Must-Win
+* **Complete core architecture sprint & execute 45-min high intensity training** (90 min)
+
+#### ⚡ Core Priorities (Should-Do)
+* **Solve 1 Medium LeetCode Dynamic Programming challenge** (45 min)
+* **Deep Work: Review production telemetry & system design** (60 min)
+
+#### 🛡️ Bonus Targets (Could-Do)
+* **Drill 5 spaced repetition memory cards in Learn Page** (15 min)
+* **Review evening reading notes** (20 min)
+* **Hydration discipline: reach 3.5 liters**
+
+I have locked this battle plan into your **Today Page** interactive checklist. Execute without hesitation.
+
+\`\`\`KRATOS_ACTIONS
+{
+  "dailyPlan": {
+    "mustWin": "Complete core architecture sprint & execute 45-min high intensity training",
+    "shouldDo": [
+      "Solve 1 Medium LeetCode Dynamic Programming challenge",
+      "Deep Work: Review production telemetry & system design"
+    ],
+    "couldDo": [
+      "Drill 5 spaced repetition memory cards in Learn Page",
+      "Review evening reading notes",
+      "Hydration discipline: reach 3.5 liters"
+    ],
+    "motivation": "The morning belongs to those who take it by force. Weak men negotiate with their alarms; warriors execute. Lock in your Must-Win before noon. No excuses."
+  },
+  "tasks": [
+    { "title": "Complete core architecture sprint & execute 45-min high intensity training", "priority": "must_win", "estimatedMinutes": 90, "category": "work" },
+    { "title": "Solve 1 Medium LeetCode Dynamic Programming challenge", "priority": "should_do", "estimatedMinutes": 45, "category": "skills" },
+    { "title": "Deep Work: Review production telemetry & system design", "priority": "should_do", "estimatedMinutes": 60, "category": "work" },
+    { "title": "Drill 5 spaced repetition memory cards in Learn Page", "priority": "could_do", "estimatedMinutes": 15, "category": "skills" },
+    { "title": "Review evening reading notes", "priority": "could_do", "estimatedMinutes": 20, "category": "mental" },
+    { "title": "Hydration discipline: reach 3.5 liters", "priority": "could_do", "estimatedMinutes": 5, "category": "health" }
+  ]
+}
+\`\`\``;
   }
 
   if (p.includes('review') || p.includes('score') || p.includes('night')) {
-    return JSON.stringify({
-      score: 87,
-      wins: [
-        "Maintained uninterrupted streak",
-        "Crushed Must-Win priority objective",
-        "Zero skipped physical training"
-      ],
-      weaknesses: [
-        "Afternoon focus dropped around 3:30 PM",
-        "Avoided secondary deep reading block"
-      ],
-      review: "You survived the battlefield and claimed victory on the non-negotiables. But 87 is not 100. You left points on the table through afternoon hesitation. Sleep deep, recover, and attack tomorrow with sharper blades."
-    });
+    return `### 🛡️ KRATOS COMBAT DEBRIEF
+
+**Day Combat Score: 87 / 100**
+
+#### 🏆 Battle Victories
+* **Maintained uninterrupted streak**
+* **Crushed Must-Win priority objective**
+* **Zero skipped physical training**
+
+#### ⚠️ Tactical Vulnerabilities
+* **Afternoon focus dropped around 3:30 PM**
+* **Avoided secondary deep reading block**
+
+> You survived the battlefield and claimed victory on the non-negotiables. But 87 is not 100. You left points on the table through afternoon hesitation. Sleep deep, recover, and attack tomorrow with sharper blades.`;
   }
 
   const tacticalQuotes = [
@@ -822,8 +910,19 @@ Format your response STRICTLY as valid JSON with no markdown backticks:
         motivation: "From Frontend to AI Engineer is not a title change — it is a combat evolution. Write the attention layer before you sleep."
       };
     }
-    const fallback = generateOfflineFallback('morning plan');
-    return JSON.parse(fallback);
+    return {
+      mustWin: "Complete core architecture sprint & execute 45-min high intensity training",
+      shouldDo: [
+        "Solve 1 Medium LeetCode Dynamic Programming challenge",
+        "Deep Work: Review production telemetry & system design"
+      ],
+      couldDo: [
+        "Drill 5 spaced repetition memory cards",
+        "Review evening reading notes",
+        "Hydration check: reach 3.5 liters"
+      ],
+      motivation: "The morning belongs to those who take it by force. Weak men negotiate with their alarms; warriors execute. Lock in your Must-Win before noon. No excuses."
+    };
   }
 }
 
@@ -848,8 +947,19 @@ Format your response STRICTLY as valid JSON with no markdown backticks:
     const cleaned = raw.replace(/```json/g, '').replace(/```/g, '').trim();
     return JSON.parse(cleaned);
   } catch (e) {
-    const fallback = generateOfflineFallback('review night');
-    return JSON.parse(fallback);
+    return {
+      score: 87,
+      wins: [
+        "Maintained uninterrupted streak",
+        "Crushed Must-Win priority objective",
+        "Zero skipped physical training"
+      ],
+      weaknesses: [
+        "Afternoon focus dropped around 3:30 PM",
+        "Avoided secondary deep reading block"
+      ],
+      review: "You survived the battlefield and claimed victory on the non-negotiables. But 87 is not 100. You left points on the table through afternoon hesitation. Sleep deep, recover, and attack tomorrow with sharper blades."
+    };
   }
 }
 
