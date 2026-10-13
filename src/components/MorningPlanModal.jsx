@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Sparkles, Swords, CheckCircle2, AlertCircle } from 'lucide-react';
 import { generateMorningBattlePlan } from '../services/ai';
 import { storage } from '../services/storage';
+import VoiceMicButton from './VoiceMicButton';
 
 export default function MorningPlanModal({ isOpen, onClose, onSavePlan }) {
   const currentPlan = storage.getDailyPlan();
@@ -126,15 +127,22 @@ export default function MorningPlanModal({ isOpen, onClose, onSavePlan }) {
           <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#00f2fe', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.03em' }}>
             What do you want to accomplish today?
           </label>
-          <input
-            type="text"
-            className="input-field"
-            value={userFocus}
-            onChange={(e) => setUserFocus(e.target.value)}
-            placeholder="e.g. Frontend to AI Engineer transition: PyTorch, attention layer, gym..."
-            style={{ marginBottom: '8px', fontSize: '13px' }}
-            id="input-morning-target"
-          />
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+            <input
+              type="text"
+              className="input-field"
+              value={userFocus}
+              onChange={(e) => setUserFocus(e.target.value)}
+              placeholder="e.g. Frontend to AI Engineer transition: PyTorch, attention layer, gym..."
+              style={{ flex: 1, fontSize: '13px' }}
+              id="input-morning-target"
+            />
+            <VoiceMicButton
+              onTranscript={(text) => setUserFocus(text)}
+              size={16}
+              id="btn-voice-morning-target"
+            />
+          </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
             {quickPresets.map((preset, idx) => (
@@ -183,14 +191,21 @@ export default function MorningPlanModal({ isOpen, onClose, onSavePlan }) {
               <AlertCircle size={14} />
               1. Non-Negotiable Must-Win Task
             </label>
-            <input
-              type="text"
-              className="input-field"
-              value={mustWin}
-              onChange={(e) => setMustWin(e.target.value)}
-              placeholder="The #1 single target that defines today's victory..."
-              style={{ borderColor: 'rgba(255, 42, 95, 0.4)' }}
-            />
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="text"
+                className="input-field"
+                value={mustWin}
+                onChange={(e) => setMustWin(e.target.value)}
+                placeholder="The #1 single target that defines today's victory..."
+                style={{ flex: 1, borderColor: 'rgba(255, 42, 95, 0.4)' }}
+              />
+              <VoiceMicButton
+                onTranscript={(text) => setMustWin(text)}
+                size={16}
+                id="btn-voice-morning-mustwin"
+              />
+            </div>
           </div>
 
           {/* Should Do */}

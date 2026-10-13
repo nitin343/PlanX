@@ -3,6 +3,7 @@ import { Send, Bot, Sparkles, AlertCircle, Shield, RotateCcw, Zap, Bell, Volume2
 import { chatWithKratos } from '../services/ai';
 import { storage } from '../services/storage';
 import { previewAlarmTone } from '../services/alarms';
+import VoiceMicButton from '../components/VoiceMicButton';
 
 function renderInlineFormatting(text) {
   if (!text) return null;
@@ -469,7 +470,7 @@ export default function KratosPage({ onNavigateTab, onRefresh }) {
         ))}
       </div>
 
-      {/* Input Box */}
+      {/* Input Box with Voice & Type */}
       <form 
         onSubmit={(e) => { e.preventDefault(); handleSend(); }}
         style={{
@@ -477,26 +478,44 @@ export default function KratosPage({ onNavigateTab, onRefresh }) {
           background: 'rgba(10, 14, 22, 0.95)',
           borderTop: '1px solid var(--border-subtle)',
           display: 'flex',
+          alignItems: 'center',
           gap: '8px',
         }}
       >
         <input
           type="text"
           className="input-field"
-          placeholder="Speak to KRATOS..."
+          placeholder="Speak to KRATOS or tap mic to voice type..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={isLoading}
           id="input-kratos-chat"
+          style={{ flex: 1 }}
         />
+        
+        {/* ChatGPT-style Voice Dictation Mic Button */}
+        <VoiceMicButton
+          onTranscript={(transcribedText, isFinal) => {
+            setInput((prev) => {
+              if (isFinal) {
+                return prev && !prev.includes(transcribedText) ? `${prev} ${transcribedText}`.trim() : transcribedText;
+              }
+              return transcribedText;
+            });
+          }}
+          size={18}
+          id="btn-voice-kratos-chat"
+        />
+
         <button 
           type="submit" 
           className="btn btn-crimson"
           disabled={isLoading || !input.trim()}
-          style={{ width: '44px', height: '44px', padding: 0 }}
+          style={{ width: '40px', height: '40px', padding: 0, borderRadius: '50%', flexShrink: 0 }}
           id="btn-send-kratos-chat"
+          title="Send Command"
         >
-          <Send size={18} />
+          <Send size={16} />
         </button>
       </form>
     </div>

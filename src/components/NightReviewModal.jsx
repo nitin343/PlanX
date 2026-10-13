@@ -3,6 +3,7 @@ import { X, Moon, Award, CheckCircle, AlertTriangle, ArrowRight } from 'lucide-r
 import { reviewNightDebrief } from '../services/ai';
 import { storage } from '../services/storage';
 import { useAuth } from '../context/AuthContext';
+import VoiceMicButton from './VoiceMicButton';
 
 export default function NightReviewModal({ isOpen, onClose, tasks = [], onCompletedReview }) {
   const { incrementStreak } = useAuth();
@@ -80,15 +81,22 @@ export default function NightReviewModal({ isOpen, onClose, tasks = [], onComple
             </div>
 
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                Brief Reflection (What worked? Where did you lose discipline?)
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                  Brief Reflection (What worked? Where did you lose discipline?)
+                </label>
+                <VoiceMicButton
+                  onTranscript={(text) => setJournalNote(text)}
+                  size={15}
+                  id="btn-voice-night-review"
+                />
+              </div>
               <textarea
                 className="input-field"
                 rows={3}
                 value={journalNote}
                 onChange={(e) => setJournalNote(e.target.value)}
-                placeholder="Be brutally honest with yourself..."
+                placeholder="Be brutally honest with yourself or tap mic to speak..."
                 style={{ resize: 'vertical' }}
               />
             </div>

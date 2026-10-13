@@ -4,6 +4,7 @@ import {
   Moon, Plus, Zap, AlertCircle, Trash2, ArrowUpRight 
 } from 'lucide-react';
 import { storage } from '../services/storage';
+import VoiceMicButton from '../components/VoiceMicButton';
 
 export default function TodayPage({ 
   onOpenMorningPlan, 
@@ -368,15 +369,23 @@ export default function TodayPage({
         </button>
       ) : (
         <form onSubmit={handleAddTask} className="card-glass" style={{ padding: '14px' }}>
-          <input 
-            type="text"
-            className="input-field"
-            placeholder="Mission objective..."
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            autoFocus
-            style={{ marginBottom: '10px' }}
-          />
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
+            <input 
+              type="text"
+              className="input-field"
+              placeholder="Mission objective or speak to mic..."
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              autoFocus
+              style={{ flex: 1 }}
+              id="input-new-task-title"
+            />
+            <VoiceMicButton
+              onTranscript={(text) => setNewTitle(text)}
+              size={16}
+              id="btn-voice-add-task"
+            />
+          </div>
           <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
             {['must_win', 'should_do', 'could_do'].map((p) => (
               <button

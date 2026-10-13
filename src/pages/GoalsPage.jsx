@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { storage } from '../services/storage';
 import { forgeStrategicSprint } from '../services/ai';
+import VoiceMicButton from '../components/VoiceMicButton';
 
 export default function GoalsPage() {
   const [goals, setGoals] = useState(() => storage.getGoals());
@@ -550,13 +551,20 @@ export default function GoalsPage() {
             </p>
 
             <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>
-                What do you want to conquer?
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#fff' }}>
+                  What do you want to conquer?
+                </label>
+                <VoiceMicButton
+                  onTranscript={(text) => setAmbitionInput(text)}
+                  size={15}
+                  id="btn-voice-goals-ambition"
+                />
+              </div>
               <textarea
                 className="input-field"
                 rows={3}
-                placeholder="e.g. Master System Design & solve 50 LeetCode dynamic programming questions, or drop 4kg fat while waking up at 5:00 AM..."
+                placeholder="e.g. Master System Design & solve 50 LeetCode dynamic programming questions, or become AI engineer by Jan 1..."
                 value={ambitionInput}
                 onChange={(e) => setAmbitionInput(e.target.value)}
                 autoFocus
@@ -660,14 +668,22 @@ export default function GoalsPage() {
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '6px' }}>
                   Sprint Title
                 </label>
-                <input
-                  type="text"
-                  className="input-field"
-                  placeholder="e.g. 21-Day Elite Discipline Sprint"
-                  value={formTitle}
-                  onChange={(e) => setFormTitle(e.target.value)}
-                  required
-                />
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="e.g. 21-Day Elite Discipline Sprint"
+                    value={formTitle}
+                    onChange={(e) => setFormTitle(e.target.value)}
+                    required
+                    style={{ flex: 1 }}
+                  />
+                  <VoiceMicButton
+                    onTranscript={(text) => setFormTitle(text)}
+                    size={16}
+                    id="btn-voice-goals-title"
+                  />
+                </div>
               </div>
 
               <div>

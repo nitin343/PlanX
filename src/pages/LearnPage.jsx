@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { storage } from '../services/storage';
 import { forgeSkillCard } from '../services/ai';
+import VoiceMicButton from '../components/VoiceMicButton';
 
 export default function LearnPage() {
   const [cards, setCards] = useState(() => {
@@ -453,12 +454,19 @@ export default function LearnPage() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '5px' }}>
-                    What specific requirement or concept do you want to learn?
-                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-secondary)' }}>
+                      What specific requirement or concept do you want to learn?
+                    </label>
+                    <VoiceMicButton
+                      onTranscript={(text) => setAiRequirement(text)}
+                      size={15}
+                      id="btn-voice-forge-requirement"
+                    />
+                  </div>
                   <textarea
                     rows={3}
-                    placeholder="e.g. How to keep 70% retention in the first 3 seconds, or how to handle API idempotency, or how to overcome price objections..."
+                    placeholder="e.g. Self-attention matrix math, LoRA fine-tuning parameter rank, or how to handle API idempotency..."
                     value={aiRequirement}
                     onChange={e => setAiRequirement(e.target.value)}
                     className="input-field"
