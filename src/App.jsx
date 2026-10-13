@@ -94,7 +94,7 @@ export default function App() {
         )}
 
         {activeTab === 'goals' && <GoalsPage key={`goals-${refreshKey}`} />}
-        {activeTab === 'kratos' && <KratosPage key={`kratos-${refreshKey}`} />}
+        {activeTab === 'kratos' && <KratosPage key={`kratos-${refreshKey}`} onNavigateTab={setActiveTab} onRefresh={handleRefresh} />}
         {activeTab === 'learn' && <LearnPage key={`learn-${refreshKey}`} />}
         {activeTab === 'settings' && <SettingsPage key={`settings-${refreshKey}`} />}
       </main>

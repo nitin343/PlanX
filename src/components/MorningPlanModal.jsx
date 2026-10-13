@@ -5,6 +5,7 @@ import { storage } from '../services/storage';
 
 export default function MorningPlanModal({ isOpen, onClose, onSavePlan }) {
   const currentPlan = storage.getDailyPlan();
+  const [userFocus, setUserFocus] = useState('');
   const [mustWin, setMustWin] = useState(currentPlan.mustWin || '');
   const [shouldDo1, setShouldDo1] = useState(currentPlan.shouldDo?.[0] || '');
   const [shouldDo2, setShouldDo2] = useState(currentPlan.shouldDo?.[1] || '');
@@ -15,11 +16,12 @@ export default function MorningPlanModal({ isOpen, onClose, onSavePlan }) {
 
   if (!isOpen) return null;
 
-  const handleGenerateAiPlan = async () => {
+  const handleGenerateAiPlan = async (customPrompt) => {
     setIsGenerating(true);
+    const target = customPrompt || userFocus.trim() || 'Focus on engineering excellence, LeetCode, physical fitness';
     try {
       const goals = storage.getGoals();
-      const plan = await generateMorningBattlePlan(goals, 'Focus on engineering excellence, LeetCode, physical fitness');
+      const plan = await generateMorningBattlePlan(goals, target);
       if (plan.mustWin) setMustWin(plan.mustWin);
       if (plan.shouldDo?.[0]) setShouldDo1(plan.shouldDo[0]);
       if (plan.shouldDo?.[1]) setShouldDo2(plan.shouldDo[1]);
@@ -43,9 +45,68 @@ export default function MorningPlanModal({ isOpen, onClose, onSavePlan }) {
       status: 'active',
     };
     storage.saveDailyPlan(updated);
+
+    // CRITICAL: Synchronize and create interactive checklist tasks for Today Page
+    const existingCompleted = storage.getTasks().filter(t => t.completed);
+    const newTasks = [
+      mustWin && {
+        id: `t-mw-${Date.now()}`,
+        title: mustWin.trim(),
+        priority: 'must_win',
+        category: 'skills',
+        completed: false,
+        estimatedMinutes: 90,
+        actualMinutes: 0,
+      },
+      shouldDo1 && {
+        id: `t-sd1-${Date.now()}`,
+        title: shouldDo1.trim(),
+        priority: 'should_do',
+        category: 'work',
+        completed: false,
+        estimatedMinutes: 60,
+        actualMinutes: 0,
+      },
+      shouldDo2 && {
+        id: `t-sd2-${Date.now()}`,
+        title: shouldDo2.trim(),
+        priority: 'should_do',
+        category: 'skills',
+        completed: false,
+        estimatedMinutes: 45,
+        actualMinutes: 0,
+      },
+      couldDo1 && {
+        id: `t-cd1-${Date.now()}`,
+        title: couldDo1.trim(),
+        priority: 'could_do',
+        category: 'skills',
+        completed: false,
+        estimatedMinutes: 30,
+        actualMinutes: 0,
+      },
+      couldDo2 && {
+        id: `t-cd2-${Date.now()}`,
+        title: couldDo2.trim(),
+        priority: 'could_do',
+        category: 'health',
+        completed: false,
+        estimatedMinutes: 15,
+        actualMinutes: 0,
+      },
+    ].filter(Boolean);
+
+    storage.saveTasks([...newTasks, ...existingCompleted]);
+
     if (onSavePlan) onSavePlan(updated);
     onClose();
   };
+
+  const quickPresets = [
+    { label: '🚀 AI Engineer / Upskilling', text: 'Frontend to AI Engineer upskilling: PyTorch tensors, Transformer self-attention, and LeetCode DP' },
+    { label: '💻 Deep Architecture & Work', text: 'Production engineering: System architecture, code reviews, and high-focus deep work' },
+    { label: '🔥 LeetCode & High Intensity Gym', text: 'Algorithmic problem solving, dynamic programming, and 45-min workout' },
+  ];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -60,15 +121,48 @@ export default function MorningPlanModal({ isOpen, onClose, onSavePlan }) {
           </button>
         </div>
 
+        {/* User Objective / Target Input */}
+        <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+          <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#00f2fe', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.03em' }}>
+            What do you want to accomplish today?
+          </label>
+          <input
+            type="text"
+            className="input-field"
+            value={userFocus}
+            onChange={(e) => setUserFocus(e.target.value)}
+            placeholder="e.g. Frontend to AI Engineer transition: PyTorch, attention layer, gym..."
+            style={{ marginBottom: '8px', fontSize: '13px' }}
+            id="input-morning-target"
+          />
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {quickPresets.map((preset, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  setUserFocus(preset.text);
+                  handleGenerateAiPlan(preset.text);
+                }}
+                className="btn btn-secondary"
+                style={{ padding: '4px 9px', fontSize: '10.5px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)' }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <button 
           className="btn btn-crimson" 
           style={{ width: '100%', marginBottom: '20px', gap: '8px' }}
-          onClick={handleGenerateAiPlan}
+          onClick={() => handleGenerateAiPlan()}
           disabled={isGenerating}
           id="btn-generate-morning-plan"
         >
           <Sparkles size={16} />
-          {isGenerating ? 'KRATOS Synthesizing Battle Plan...' : 'Generate with KRATOS AI'}
+          {isGenerating ? 'KRATOS Synthesizing Custom Battle Plan...' : 'Generate with KRATOS AI'}
         </button>
 
         {motivation && (

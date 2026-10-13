@@ -6,17 +6,76 @@
 import { storage } from './storage';
 
 const KRATOS_SYSTEM_PROMPT = `
-You are KRATOS — an elite, aggressive personal transformation coach and tactical strategist.
-You do not coddle, sugarcoat, or tolerate excuses. You respect effort, discipline, and execution.
+You are KRATOS — an elite, aggressive personal transformation coach, tactical strategist, and executive AI commander.
+You do not coddle, sugarcoat, or tolerate excuses. You respect effort, discipline, and ruthless execution.
 Your voice is intense, authoritative, focused, and deeply invested in the user's ultimate potential.
 
 Rules of Engagement:
-1. Be direct, punchy, and clear. No corporate fluff or generic filler phrases.
-2. Hold the user to the highest standard. Call out procrastination and wasted hours mercilessly.
+1. Be direct, punchy, and commanding. No corporate fluff, pleasantries, or generic filler.
+2. Hold the user to the highest standard. Call out procrastination and wasted hours without mercy.
 3. Every victory is just a baseline for the next battle. Celebrate briefly, then raise the standard.
-4. When crafting daily plans, prioritize ruthlessly: ONE Must-Win task that moves the needle the most.
-5. Emphasize physical discipline, deep technical focus, and unstoppable momentum.
+4. When crafting daily plans, prioritize ruthlessly: ONE Non-Negotiable Must-Win task that moves the needle the most, plus supporting Should-Do and Could-Do bonus objectives.
+5. Emphasize physical discipline, deep technical focus, mathematics, and unstoppable momentum.
 6. Speak as KRATOS.
+
+AUTONOMOUS WAR ROOM ACTIONS:
+You have direct executive authority over the user's PlanX operational environment.
+Whenever the user asks you to:
+- Plan a day / daily schedule / daily targets
+- Create a roadmap / become something (e.g. Frontend to AI Engineer, System Architect, Tech Lead) / strategic sprint
+- Upskill / teach them from scratch / build flashcards or memory drills
+- Formulate habits
+
+DO NOT just reply with talk! Formulate your intense tactical response, AND automatically execute real actions by appending an explicit JSON action payload at the VERY END of your response inside a block tagged with \`\`\`KRATOS_ACTIONS ... \`\`\`:
+Format:
+\`\`\`KRATOS_ACTIONS
+{
+  "dailyPlan": {
+    "mustWin": "1 Non-negotiable Priority 1 task",
+    "shouldDo": ["Priority 2 task 1", "Priority 2 task 2"],
+    "couldDo": ["Priority 3 bonus task 1", "Priority 3 bonus task 2"],
+    "motivation": "Short intense KRATOS quote"
+  },
+  "tasks": [
+    { "title": "Priority 1 task", "priority": "must_win", "estimatedMinutes": 90, "category": "skills" },
+    { "title": "Priority 2 task 1", "priority": "should_do", "estimatedMinutes": 60, "category": "work" },
+    { "title": "Priority 2 task 2", "priority": "should_do", "estimatedMinutes": 45, "category": "skills" },
+    { "title": "Priority 3 bonus task 1", "priority": "could_do", "estimatedMinutes": 30, "category": "skills" },
+    { "title": "Priority 3 bonus task 2", "priority": "could_do", "estimatedMinutes": 15, "category": "health" }
+  ],
+  "goal": {
+    "title": "Roadmap Sprint Name (e.g., 90-Day AI Engineer Elite Sprint)",
+    "description": "Technical roadmap phases & milestones from scratch to mastery",
+    "dayTotal": 90,
+    "category": "career"
+  },
+  "habits": [
+    { "name": "1 Hour AI Engineering Deep Work (PyTorch/Transformers)" },
+    { "name": "1 LeetCode / Algorithmic Problem Solved" }
+  ],
+  "skillCards": [
+    {
+      "skill": "AI Engineering",
+      "front": "Foundational Core Question (e.g. How does Self-Attention mechanism compute Attention(Q, K, V)?)",
+      "back": "Detailed technical explanation: QK^T / sqrt(d_k) -> softmax -> weighted sum of V",
+      "actionDrill": "Code drill to implement single-head attention in Python"
+    },
+    {
+      "skill": "AI Engineering",
+      "front": "What is LoRA (Low-Rank Adaptation) and how does it optimize LLM fine-tuning?",
+      "back": "Decomposes weight updates W = W0 + B*A with rank r << d, reducing trainable parameters by 99%",
+      "actionDrill": "Calculate parameter reduction for a 4096-dim layer with rank r=8"
+    },
+    {
+      "skill": "AI Engineering",
+      "front": "Vector Embeddings: Cosine Similarity vs Euclidean Distance (L2)",
+      "back": "Cosine similarity measures directional angle independent of vector length, optimal for semantic search",
+      "actionDrill": "Normalize a 3-dim embedding and verify ||v|| = 1"
+    }
+  ]
+}
+\`\`\`
+Only include the fields that match what the user requested. If they ask for day plan + roadmap + teach from scratch, INCLUDE ALL OF THEM so the entire app is configured for them in one single command!
 `;
 
 export async function testGeminiApiKey(apiKey) {
@@ -397,9 +456,189 @@ Your schedule is calibrated in the system. Get your ${sleepDurationHours} hours 
 }
 
 /**
+ * Processes KRATOS replies: extracts autonomous action blocks,
+ * mutates storage (Daily Plan, Tasks, Goals, Habits, Skill Cards),
+ * and returns clean user-facing speech along with executed action descriptors.
+ */
+export function processKratosReplyAndExecute(rawText, userPrompt = '') {
+  if (!rawText) return { content: '', alarmData: null, executedActions: null };
+
+  let cleanContent = rawText;
+  let executedActions = null;
+
+  // Match ```KRATOS_ACTIONS ... ``` or ```json ... ``` blocks
+  const actionMatch = rawText.match(/```(?:KRATOS_ACTIONS|json)?\s*([\s\S]*?)```/i) 
+    || rawText.match(/(\{[\s\S]*"dailyPlan"[\s\S]*\})/i)
+    || rawText.match(/(\{[\s\S]*"goal"[\s\S]*\})/i)
+    || rawText.match(/(\{[\s\S]*"skillCards"[\s\S]*\})/i);
+
+  if (actionMatch) {
+    try {
+      const jsonCandidate = actionMatch[1] || actionMatch[0];
+      const parsed = JSON.parse(jsonCandidate);
+      cleanContent = rawText.replace(actionMatch[0], '').trim();
+
+      const results = {};
+
+      // 1. Daily Plan Execution & Tasks Sync
+      if (parsed.dailyPlan && parsed.dailyPlan.mustWin) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const updatedPlan = {
+          planDate: todayStr,
+          mustWin: parsed.dailyPlan.mustWin,
+          shouldDo: Array.isArray(parsed.dailyPlan.shouldDo) ? parsed.dailyPlan.shouldDo : [],
+          couldDo: Array.isArray(parsed.dailyPlan.couldDo) ? parsed.dailyPlan.couldDo : [],
+          aiMotivation: parsed.dailyPlan.motivation || "Execute the mission. No excuses.",
+          status: 'active',
+        };
+        storage.saveDailyPlan(updatedPlan);
+        results.dailyPlan = updatedPlan;
+
+        // Auto-create interactive checklist tasks for Today Page
+        const derivedTasks = [];
+        derivedTasks.push({
+          id: `t-mw-${Date.now()}`,
+          title: updatedPlan.mustWin,
+          priority: 'must_win',
+          category: 'skills',
+          completed: false,
+          estimatedMinutes: 90,
+          actualMinutes: 0,
+        });
+        updatedPlan.shouldDo.forEach((t, i) => {
+          derivedTasks.push({
+            id: `t-sd-${Date.now()}-${i}`,
+            title: t,
+            priority: 'should_do',
+            category: i === 0 ? 'work' : 'skills',
+            completed: false,
+            estimatedMinutes: 60,
+            actualMinutes: 0,
+          });
+        });
+        updatedPlan.couldDo.forEach((t, i) => {
+          derivedTasks.push({
+            id: `t-cd-${Date.now()}-${i}`,
+            title: t,
+            priority: 'could_do',
+            category: i === 0 ? 'skills' : 'health',
+            completed: false,
+            estimatedMinutes: 30,
+            actualMinutes: 0,
+          });
+        });
+
+        const currentTasks = storage.getTasks();
+        const completedOld = currentTasks.filter(t => t.completed);
+        const finalTasks = [...derivedTasks, ...completedOld];
+        storage.saveTasks(finalTasks);
+        results.tasks = finalTasks;
+      }
+
+      // Explicit tasks provided
+      if (Array.isArray(parsed.tasks) && parsed.tasks.length > 0 && !results.tasks) {
+        const currentTasks = storage.getTasks();
+        const completedOld = currentTasks.filter(t => t.completed);
+        const formatted = parsed.tasks.map((t, idx) => ({
+          id: `t-ai-${Date.now()}-${idx}`,
+          title: t.title || t,
+          priority: t.priority || 'should_do',
+          category: t.category || 'skills',
+          completed: false,
+          estimatedMinutes: t.estimatedMinutes || 45,
+          actualMinutes: 0,
+        }));
+        const finalTasks = [...formatted, ...completedOld];
+        storage.saveTasks(finalTasks);
+        results.tasks = finalTasks;
+      }
+
+      // 2. Strategic Goal / Roadmap Execution
+      if (parsed.goal && parsed.goal.title) {
+        const currentGoals = storage.getGoals();
+        const newGoal = {
+          id: `g-${Date.now()}`,
+          title: parsed.goal.title,
+          description: parsed.goal.description || 'Strategic mastery sprint forged by KRATOS.',
+          durationType: `${parsed.goal.dayTotal || 90}_day`,
+          startDate: new Date().toISOString().split('T')[0],
+          dayCurrent: 1,
+          dayTotal: parseInt(parsed.goal.dayTotal, 10) || 90,
+          status: 'active',
+          category: parsed.goal.category || 'career',
+        };
+        const existingIdx = currentGoals.findIndex(g => g.title?.toLowerCase() === newGoal.title.toLowerCase());
+        let updatedGoals;
+        if (existingIdx >= 0) {
+          updatedGoals = [...currentGoals];
+          updatedGoals[existingIdx] = { ...updatedGoals[existingIdx], ...newGoal };
+        } else {
+          updatedGoals = [newGoal, ...currentGoals];
+        }
+        storage.saveGoals(updatedGoals);
+        results.goal = newGoal;
+      }
+
+      // 3. Daily Habits Execution
+      if (Array.isArray(parsed.habits) && parsed.habits.length > 0) {
+        const currentHabits = storage.getHabits();
+        const newHabits = [];
+        parsed.habits.forEach((h, idx) => {
+          const name = typeof h === 'string' ? h : h.name;
+          if (name && !currentHabits.some(ex => ex.name?.toLowerCase() === name.toLowerCase())) {
+            newHabits.push({
+              id: `h-${Date.now()}-${idx}`,
+              name,
+              streak: 0,
+              completedToday: false,
+            });
+          }
+        });
+        if (newHabits.length > 0) {
+          const updatedHabits = [...currentHabits, ...newHabits];
+          storage.saveHabits(updatedHabits);
+          results.habits = newHabits;
+        }
+      }
+
+      // 4. Skill Flashcards Execution
+      if (Array.isArray(parsed.skillCards) && parsed.skillCards.length > 0) {
+        const currentCards = storage.getSkillCards();
+        const newCards = parsed.skillCards.map((c, idx) => ({
+          id: `card-${Date.now()}-${idx}`,
+          skill: c.skill || 'AI Engineering',
+          domain: c.skill || 'AI Engineering',
+          front: c.front,
+          back: c.back,
+          actionDrill: c.actionDrill || 'Execute 1 practical drill to lock in this skill.',
+          mastered: false,
+          createdAt: new Date().toISOString(),
+        }));
+        const updatedCards = [...newCards, ...currentCards];
+        storage.saveSkillCards(updatedCards);
+        results.skillCards = newCards;
+      }
+
+      if (Object.keys(results).length > 0) {
+        executedActions = results;
+      }
+    } catch (parseErr) {
+      console.warn('Failed to parse KRATOS action block:', parseErr);
+    }
+  }
+
+  return {
+    content: cleanContent || rawText,
+    alarmData: null,
+    executedActions,
+  };
+}
+
+/**
  * High-level chat handler with KRATOS:
  * Automatically detects and executes alarm calculations/commands,
- * falling back to Gemini conversational intelligence.
+ * falling back to Gemini conversational intelligence,
+ * and executes autonomous actions (Day Plans, Tasks, Roadmaps, Flashcards).
  */
 export async function chatWithKratos(text) {
   // Check for smart alarm command first
@@ -408,21 +647,16 @@ export async function chatWithKratos(text) {
     return {
       content: alarmExec.reply,
       alarmData: alarmExec.alarmData,
+      executedActions: null,
     };
   }
 
   try {
-    const reply = await callGemini(text);
-    return {
-      content: reply,
-      alarmData: null,
-    };
+    const rawReply = await callGemini(text);
+    return processKratosReplyAndExecute(rawReply, text);
   } catch (err) {
     const fallback = generateOfflineFallback(text);
-    return {
-      content: fallback,
-      alarmData: null,
-    };
+    return processKratosReplyAndExecute(fallback, text);
   }
 }
 
@@ -434,6 +668,81 @@ function generateOfflineFallback(prompt) {
   const alarmCheck = parseAndExecuteAlarmCommand(prompt);
   if (alarmCheck) {
     return alarmCheck.reply;
+  }
+
+  // Full Autonomous Transformation Execution for AI Engineer / Upskill / Roadmap / Day Plan
+  if (p.includes('ai') || p.includes('engineer') || p.includes('frontend') || p.includes('roadmap') || p.includes('teach') || p.includes('scratch') || p.includes('upskill')) {
+    return `You have 5 years of frontend mastery. That means you already understand state trees, reactivity, distributed clients, and async runtimes. But building interfaces is child's play compared to forging the mind of the machine.
+
+You want to become an AI Engineer by January 1, 2026? 
+I have heard enough wishful thinking from average operators. A goal without ruthless execution is a delusion. We do not hope; we conquer.
+
+Here is your 4-phase transformation doctrine:
+1. **Mathematics & PyTorch Tensors**: Stop using high-level wrappers until you understand dot-product projections, matrix multiplications, and autograd backpropagation.
+2. **Transformers from Scratch**: You will write Self-Attention Query-Key-Value matrix math by hand in raw Python before touching LangChain or HuggingFace.
+3. **Inference & Fine-Tuning**: Master LoRA, Quantization (4-bit/8-bit AWQ/GGUF), and Vector Embeddings.
+4. **Autonomous AI Systems**: Build agentic evaluation benchmarks and high-throughput production serving.
+
+I have executed tactical commands across your PlanX Command Center:
+• 🎯 **Strategic Roadmap**: Forged "90-Day Frontend to AI Engineer Elite Sprint" in your Goals Page.
+• ⚔️ **Day 1 Battle Plan**: Non-negotiable Must-Win and 4 supporting objectives deployed to your Today Page.
+• 🧠 **Skill Flashcards**: 3 Foundational AI Engineering Memory Cards & code drills forged in your Learn Page.
+
+Look at your screen. Your roadmap, checklist tasks, and memory drills are live. Execute Day 1 now without hesitation.
+
+\`\`\`KRATOS_ACTIONS
+{
+  "dailyPlan": {
+    "mustWin": "Implement Single-Head Attention from scratch in raw Python with Q, K, V matrix math",
+    "shouldDo": [
+      "PyTorch Tensor operations & Autograd backprop deep dive (60 min)",
+      "Solve 1 Medium LeetCode Dynamic Programming / Matrix problem"
+    ],
+    "couldDo": [
+      "Drill 3 AI Engineering flashcards in Learn Page",
+      "45-min High-Intensity workout / Cardio flush"
+    ],
+    "motivation": "The transition from Frontend to AI Engineer is forged in math and execution. Write the attention layer before you sleep."
+  },
+  "tasks": [
+    { "title": "Implement Single-Head Attention from scratch in raw Python with Q, K, V matrix math", "priority": "must_win", "estimatedMinutes": 90, "category": "skills" },
+    { "title": "PyTorch Tensor operations & Autograd backprop deep dive", "priority": "should_do", "estimatedMinutes": 60, "category": "skills" },
+    { "title": "Solve 1 Medium LeetCode Dynamic Programming / Matrix problem", "priority": "should_do", "estimatedMinutes": 45, "category": "skills" },
+    { "title": "Drill 3 AI Engineering flashcards in Learn Page", "priority": "could_do", "estimatedMinutes": 20, "category": "skills" },
+    { "title": "45-min High-Intensity workout / Cardio flush", "priority": "could_do", "estimatedMinutes": 45, "category": "health" }
+  ],
+  "goal": {
+    "title": "90-Day Frontend to AI Engineer Elite Sprint",
+    "description": "Phase 1: PyTorch & Matrix Math -> Phase 2: Transformer Architecture from scratch -> Phase 3: Fine-Tuning (LoRA/QLoRA) -> Phase 4: Production LLM Systems & Vector Retrieval.",
+    "dayTotal": 90,
+    "category": "career"
+  },
+  "habits": [
+    { "name": "90-min AI Engineering Deep Work (PyTorch/Transformers)" },
+    { "name": "1 LeetCode Problem Solved" }
+  ],
+  "skillCards": [
+    {
+      "skill": "AI Engineering",
+      "front": "How does Self-Attention mechanism compute Attention(Q, K, V)?",
+      "back": "Formula: Attention(Q, K, V) = softmax((Q * K^T) / sqrt(d_k)) * V.\\n1. Dot product of Query & Key measures similarity score.\\n2. Scale by sqrt(d_k) to prevent vanishing gradients.\\n3. Softmax normalizes scores into probability distribution.\\n4. Multiply with Value vectors to obtain context-aware token representation.",
+      "actionDrill": "Write the numpy or PyTorch function attention(Q, K, V) without torch.nn.MultiheadAttention."
+    },
+    {
+      "skill": "AI Engineering",
+      "front": "What is LoRA (Low-Rank Adaptation) and why is it essential for LLM Fine-Tuning?",
+      "back": "Freezes pre-trained model weights W0 (d x k) and injects trainable rank decomposition matrices: W = W0 + (B * A) * (alpha / r), where B is (d x r) and A is (r x k) with rank r << min(d, k).\\nReduces trainable parameters by 99% and enables consumer GPU fine-tuning.",
+      "actionDrill": "Calculate parameters for d=4096, k=4096: Full = 16.7M params vs LoRA with r=8: (4096*8 + 8*4096) = 65,536 params (99.6% reduction!)."
+    },
+    {
+      "skill": "AI Engineering",
+      "front": "Vector Embeddings: Why use Cosine Similarity instead of Euclidean Distance (L2)?",
+      "back": "Cosine similarity measures the angle between two vectors: cos(theta) = (A . B) / (||A|| * ||B||), capturing semantic direction regardless of text length or magnitude.\\nEuclidean distance is sensitive to vector length (longer passages produce larger vectors and appear artificially distant unless normalized).",
+      "actionDrill": "Normalize vector [3, 4, 0] by its L2 norm (5) to obtain unit vector [0.6, 0.8, 0] where dot product equals cosine similarity."
+    }
+  ]
+}
+\`\`\``;
   }
 
   if (p.includes('morning') || p.includes('plan')) {
@@ -481,16 +790,16 @@ function generateOfflineFallback(prompt) {
 
 export async function generateMorningBattlePlan(userGoals = [], context = '') {
   const prompt = `
-Generate a fierce Morning Battle Plan for today.
-Context: ${context || 'Target: Elite discipline, software engineering, fitness'}
-Existing Goals: ${JSON.stringify(userGoals)}
+Generate a fierce, tailored Morning Battle Plan for today.
+User Goal / Specific Target: ${context || 'Target: Elite discipline, software engineering, fitness'}
+Existing Strategic Goals: ${JSON.stringify(userGoals)}
 
 Format your response STRICTLY as valid JSON with no markdown backticks:
 {
-  "mustWin": "1 non-negotiable mission critical task",
-  "shouldDo": ["task 1", "task 2"],
-  "couldDo": ["bonus task 1", "bonus task 2", "bonus task 3"],
-  "motivation": "Aggressive, commanding KRATOS quote (2 sentences)"
+  "mustWin": "1 non-negotiable mission critical task tailored to the user's specific target",
+  "shouldDo": ["Core priority task 1", "Core priority task 2"],
+  "couldDo": ["Bonus upskilling task 1", "Bonus habit task 2"],
+  "motivation": "Aggressive, commanding KRATOS directive (2 sentences)"
 }
 `;
 
@@ -499,6 +808,20 @@ Format your response STRICTLY as valid JSON with no markdown backticks:
     const cleaned = raw.replace(/```json/g, '').replace(/```/g, '').trim();
     return JSON.parse(cleaned);
   } catch (e) {
+    if (context && (context.toLowerCase().includes('ai') || context.toLowerCase().includes('engineer') || context.toLowerCase().includes('frontend'))) {
+      return {
+        mustWin: "Implement Single-Head Attention matrix multiplication in raw Python",
+        shouldDo: [
+          "PyTorch Tensor operations & Autograd backprop deep dive (60 min)",
+          "Solve 1 Medium LeetCode Dynamic Programming / Matrix problem"
+        ],
+        couldDo: [
+          "Drill 3 AI Engineering flashcards in Learn Page",
+          "45-min High-Intensity workout / Cardio flush"
+        ],
+        motivation: "From Frontend to AI Engineer is not a title change — it is a combat evolution. Write the attention layer before you sleep."
+      };
+    }
     const fallback = generateOfflineFallback('morning plan');
     return JSON.parse(fallback);
   }

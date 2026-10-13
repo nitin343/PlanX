@@ -17,6 +17,23 @@ export default function TodayPage({
   const [isAdding, setIsAdding] = useState(false);
 
   const toggleTask = (id) => {
+    if (id === 'must-win-default') {
+      const newTask = {
+        id: `t-mw-${Date.now()}`,
+        title: plan.mustWin || 'Define your non-negotiable target',
+        priority: 'must_win',
+        category: 'skills',
+        completed: true,
+        completedAt: new Date().toISOString(),
+        estimatedMinutes: 90,
+        actualMinutes: 90,
+      };
+      const updated = [newTask, ...tasks];
+      setTasks(updated);
+      storage.saveTasks(updated);
+      return;
+    }
+
     const updated = tasks.map((t) => {
       if (t.id === id) {
         return { 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, Sparkles, AlertCircle, Shield, RotateCcw, Zap, Bell, Volume2 } from 'lucide-react';
+import { Send, Bot, Sparkles, AlertCircle, Shield, RotateCcw, Zap, Bell, Volume2, ArrowUpRight, Target, CheckCircle2, BookOpen } from 'lucide-react';
 import { chatWithKratos } from '../services/ai';
 import { storage } from '../services/storage';
 import { previewAlarmTone } from '../services/alarms';
@@ -98,7 +98,7 @@ function FormattedKratosMessage({ content }) {
   return <div>{elements}</div>;
 }
 
-export default function KratosPage() {
+export default function KratosPage({ onNavigateTab, onRefresh }) {
   const [messages, setMessages] = useState(() => storage.getChatHistory());
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -135,11 +135,15 @@ export default function KratosPage() {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         content: response.content,
         alarmData: response.alarmData,
+        executedActions: response.executedActions,
       };
       const finalMessages = [...nextMessages, assistantMsg];
       setMessages(finalMessages);
       storage.saveChatHistory(finalMessages);
       setMetrics(storage.getAiMetrics());
+      if (onRefresh && response.executedActions) {
+        onRefresh();
+      }
     } catch (err) {
       const errorMsg = {
         id: `err-${Date.now()}`,
@@ -167,10 +171,11 @@ export default function KratosPage() {
   };
 
   const quickCommands = [
+    'Frontend with 5y exp: build AI Engineer roadmap, flashcards & day plan',
+    'Plan my day with 1 Must-Win, 2 Should-Do, and 2 Could-Do bonus tasks',
     'set alaram at 2 am to sleep and sleep for 6 hours',
     'wake me up at 6:00 AM with Indian flute',
     'Evaluate my excuses & test my resolve',
-    'Plan my next 2 hours of laser focus',
   ];
 
   return (
@@ -253,6 +258,114 @@ export default function KratosPage() {
                     <FormattedKratosMessage content={m.content} />
                   )}
                 </div>
+
+                {/* Interactive Tactical Ops Execution Receipt */}
+                {m.executedActions && (
+                  <div 
+                    style={{ 
+                      marginTop: '12px', 
+                      padding: '12px 14px', 
+                      background: 'rgba(10, 16, 28, 0.95)', 
+                      border: '1px solid rgba(0, 245, 160, 0.45)', 
+                      borderRadius: '12px',
+                      boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 900, color: '#00f5a0', letterSpacing: '0.04em' }}>
+                        <Shield size={14} />
+                        <span>WAR ROOM COMMANDS EXECUTED</span>
+                      </div>
+                      <span className="badge badge-emerald" style={{ fontSize: '9px', padding: '2px 6px' }}>SYNCED TO APP</span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {/* Strategic Roadmap */}
+                      {m.executedActions.goal && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '15px' }}>🎯</span>
+                            <div>
+                              <div style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>
+                                Roadmap: {m.executedActions.goal.title}
+                              </div>
+                              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                                {m.executedActions.goal.dayTotal}-Day Sprint forged in Goals Page
+                              </div>
+                            </div>
+                          </div>
+                          {onNavigateTab && (
+                            <button
+                              type="button"
+                              onClick={() => onNavigateTab('goals')}
+                              className="btn btn-secondary"
+                              style={{ padding: '4px 10px', fontSize: '10.5px', gap: '4px', whiteSpace: 'nowrap' }}
+                            >
+                              <span>View Goals</span>
+                              <ArrowUpRight size={12} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Daily Battle Plan & Interactive Tasks */}
+                      {(m.executedActions.dailyPlan || m.executedActions.tasks) && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '15px' }}>⚔️</span>
+                            <div>
+                              <div style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>
+                                Day Battle Plan & Interactive Tasks
+                              </div>
+                              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                                Must-Win + Should-Do + Could-Do deployed to Today Page
+                              </div>
+                            </div>
+                          </div>
+                          {onNavigateTab && (
+                            <button
+                              type="button"
+                              onClick={() => onNavigateTab('today')}
+                              className="btn btn-crimson"
+                              style={{ padding: '4px 10px', fontSize: '10.5px', gap: '4px', whiteSpace: 'nowrap' }}
+                            >
+                              <span>Inspect Today</span>
+                              <ArrowUpRight size={12} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Skill Flashcards */}
+                      {m.executedActions.skillCards && m.executedActions.skillCards.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '15px' }}>🧠</span>
+                            <div>
+                              <div style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>
+                                {m.executedActions.skillCards.length} Skill Memory Flashcards
+                              </div>
+                              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                                Active recall & code drills forged in Learn Page
+                              </div>
+                            </div>
+                          </div>
+                          {onNavigateTab && (
+                            <button
+                              type="button"
+                              onClick={() => onNavigateTab('learn')}
+                              className="btn btn-secondary"
+                              style={{ padding: '4px 10px', fontSize: '10.5px', gap: '4px', borderColor: '#00f5a0', color: '#00f5a0', whiteSpace: 'nowrap' }}
+                            >
+                              <span>Drill Skills</span>
+                              <ArrowUpRight size={12} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Interactive Alarm Confirmation Card */}
                 {m.alarmData && (
