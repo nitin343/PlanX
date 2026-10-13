@@ -177,7 +177,14 @@ export const storage = {
   getAuthUser: () => {
     const raw = localStorage.getItem(CURRENT_USER_KEY);
     try {
-      return raw ? JSON.parse(raw) : null;
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      // Validate session expiration (90 days rolling window)
+      if (parsed && parsed._sessionExpiresAt && Date.now() > parsed._sessionExpiresAt) {
+        localStorage.removeItem(CURRENT_USER_KEY);
+        return null;
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -185,10 +192,31 @@ export const storage = {
 
   setAuthUser: (user) => {
     if (user) {
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+      // Prolong mobile and desktop sessions to 90 days rolling expiration
+      const persistentUser = {
+        ...user,
+        _sessionExpiresAt: Date.now() + (90 * 24 * 60 * 60 * 1000), // 90 days
+        _lastActiveAt: Date.now(),
+      };
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(persistentUser));
     } else {
       localStorage.removeItem(CURRENT_USER_KEY);
     }
+  },
+
+  touchSession: () => {
+    // Extends the 90-day rolling expiration on active usage (especially mobile)
+    try {
+      const raw = localStorage.getItem(CURRENT_USER_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed) {
+          parsed._sessionExpiresAt = Date.now() + (90 * 24 * 60 * 60 * 1000);
+          parsed._lastActiveAt = Date.now();
+          localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(parsed));
+        }
+      }
+    } catch {}
   },
 
   getLocalUsers: () => {

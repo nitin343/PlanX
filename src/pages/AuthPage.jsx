@@ -5,7 +5,7 @@ import { storage } from '../services/storage';
 import { testGeminiApiKey } from '../services/ai';
 
 export default function AuthPage({ onAuthSuccess }) {
-  const { signIn, signUp, resendConfirmationEmail, isSupabaseConfigured } = useAuth();
+  const { signIn, signUp, loginGuest, resendConfirmationEmail, isSupabaseConfigured } = useAuth();
   const [mode, setMode] = useState('signin'); // 'signin' | 'signup'
 
   const [email, setEmail] = useState('');
@@ -93,12 +93,7 @@ export default function AuthPage({ onAuthSuccess }) {
 
   const handleGuestDemo = () => {
     // Allows instant guest preview mode with a local guest ID
-    const guestUser = {
-      id: 'guest_operator',
-      email: 'guest@planx.local',
-      user_metadata: { full_name: 'Guest Operator' },
-    };
-    storage.setAuthUser(guestUser);
+    loginGuest();
     if (onAuthSuccess) onAuthSuccess();
   };
 

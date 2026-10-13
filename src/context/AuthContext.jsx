@@ -5,9 +5,10 @@ import { storage } from '../services/storage';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+  // CRITICAL FIX: Initialize user immediately from persistent storage so refresh NEVER drops the session!
+  const [user, setUser] = useState(() => storage.getAuthUser());
   const [profile, setProfile] = useState(() => storage.getProfile());
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !storage.getAuthUser());
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
 
@@ -79,30 +80,50 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Sync Supabase Auth session on mount and auth changes
+  // Sync Supabase Auth session on mount and auth changes without dropping persistent session
   useEffect(() => {
+    // 1. Prolong mobile & desktop rolling session expiration (90 days)
+    storage.touchSession();
+
+    const localUser = storage.getAuthUser();
+    if (localUser) {
+      setUser(localUser);
+      syncCloudProfile(localUser).catch(() => {});
+    }
+
     if (isSupabaseConfigured && supabase) {
       supabase.auth.getSession().then(async ({ data: { session } }) => {
-        const sbUser = session?.user ?? null;
-        storage.setAuthUser(sbUser);
-        setUser(sbUser);
-        if (sbUser) {
-          await syncCloudProfile(sbUser);
+        if (session?.user) {
+          storage.setAuthUser(session.user);
+          setUser(session.user);
+          await syncCloudProfile(session.user);
           setProfile(storage.getProfile());
+        } else {
+          // Cloud session is null (or offline/unconfirmed email user)
+          // DO NOT wipe the user session! Keep the persistent local session active!
+          const saved = storage.getAuthUser();
+          if (saved) {
+            setUser(saved);
+          }
         }
         setLoading(false);
       }).catch((err) => {
-        console.warn('Session retrieval error:', err);
-        storage.setAuthUser(null);
+        console.warn('Session retrieval error (maintaining persistent offline session):', err);
+        const saved = storage.getAuthUser();
+        if (saved) setUser(saved);
         setLoading(false);
       });
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        const sbUser = session?.user ?? null;
-        storage.setAuthUser(sbUser);
-        setUser(sbUser);
-        if (sbUser) {
-          await syncCloudProfile(sbUser);
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_OUT') {
+          // Explicit sign out is handled by signOut()
+          return;
+        }
+
+        if (session?.user) {
+          storage.setAuthUser(session.user);
+          setUser(session.user);
+          await syncCloudProfile(session.user);
           setProfile(storage.getProfile());
         }
       });
@@ -369,6 +390,18 @@ export function AuthProvider({ children }) {
     setIsAuthModalOpen(true);
   };
 
+  const loginGuest = () => {
+    const guestUser = {
+      id: 'guest_operator',
+      email: 'guest@planx.local',
+      user_metadata: { full_name: 'Guest Operator' },
+    };
+    storage.setAuthUser(guestUser);
+    setUser(guestUser);
+    setProfile(storage.getProfile());
+    return guestUser;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -384,6 +417,7 @@ export function AuthProvider({ children }) {
         openSignUp,
         signIn,
         signUp,
+        loginGuest,
         resendConfirmationEmail,
         signOut,
         updateProfile,

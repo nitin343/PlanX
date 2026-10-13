@@ -123,6 +123,10 @@ export default function SettingsPage() {
               <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                 {user.email}
               </div>
+              <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10.5px', color: '#00f5a0' }}>
+                <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#00f5a0', boxShadow: '0 0 6px #00f5a0' }} />
+                <span>Persistent Session (90-Day Auto-Renew)</span>
+              </div>
             </div>
             <button
               onClick={() => signOut()}
