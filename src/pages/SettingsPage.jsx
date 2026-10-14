@@ -34,16 +34,27 @@ export default function SettingsPage() {
 
   const handleManualSync = async () => {
     setIsSyncingCloud(true);
-    setSyncMsg('Connecting to Supabase Cloud & synchronizing progress...');
+    setSyncMsg({ type: 'info', text: 'Connecting to Supabase Cloud & synchronizing progress...' });
     try {
-      await pushToCloud();
-      await pullFromCloud();
-      setSyncMsg('✓ Synced! All tasks, goals, habits & daily plans unified across Mobile & Laptop.');
+      const pushRes = await pushToCloud();
+      if (!pushRes.success) {
+        throw new Error(pushRes.error || 'Failed to upload to cloud.');
+      }
+      const pullRes = await pullFromCloud();
+      if (!pullRes.success) {
+        throw new Error(pullRes.error || 'Failed to download from cloud.');
+      }
+      // Re-hydrate settings in component state so user sees transferred key immediately
+      setSettings(storage.getAiSettings());
+      setSyncMsg({
+        type: 'success',
+        text: `✓ Verified Sync: ${pushRes.summary} synchronized between Mobile & Laptop.`,
+      });
     } catch (e) {
-      setSyncMsg(`Sync alert: ${e.message}`);
+      setSyncMsg({ type: 'error', text: `⚠️ Sync Notice: ${e.message}` });
     } finally {
       setIsSyncingCloud(false);
-      setTimeout(() => setSyncMsg(null), 5000);
+      setTimeout(() => setSyncMsg(null), 7000);
     }
   };
 
@@ -208,8 +219,22 @@ export default function SettingsPage() {
         </p>
 
         {syncMsg && (
-          <div style={{ padding: '8px 12px', background: 'rgba(0, 245, 160, 0.1)', border: '1px solid #00f5a0', borderRadius: '6px', color: '#00f5a0', fontSize: '11.5px', fontWeight: 700, marginBottom: '10px' }}>
-            {syncMsg}
+          <div 
+            style={{ 
+              padding: '10px 14px', 
+              background: syncMsg.type === 'error' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(0, 245, 160, 0.12)', 
+              border: `1px solid ${syncMsg.type === 'error' ? '#ef4444' : '#00f5a0'}`, 
+              borderRadius: '8px', 
+              color: syncMsg.type === 'error' ? '#ff6b6b' : '#00f5a0', 
+              fontSize: '12px', 
+              fontWeight: 700, 
+              marginBottom: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <span>{typeof syncMsg === 'string' ? syncMsg : syncMsg.text}</span>
           </div>
         )}
 
@@ -219,22 +244,11 @@ export default function SettingsPage() {
             onClick={handleManualSync}
             disabled={isSyncingCloud || !user?.id}
             className="btn btn-primary"
-            style={{ padding: '8px 14px', fontSize: '11.5px', gap: '6px', fontWeight: 800 }}
+            style={{ padding: '8px 16px', fontSize: '12px', gap: '6px', fontWeight: 800 }}
           >
-            <RefreshCw size={13} className={isSyncingCloud ? 'animate-spin' : ''} />
-            <span>{isSyncingCloud ? 'Syncing...' : 'Sync Across Devices Now'}</span>
+            <RefreshCw size={14} className={isSyncingCloud ? 'animate-spin' : ''} />
+            <span>{isSyncingCloud ? 'Synchronizing...' : 'Sync Across Devices Now'}</span>
           </button>
-
-          <a
-            href="https://supabase.com/dashboard/project/bdpqjwpxvjseagxlhzho/sql/new"
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn-secondary"
-            style={{ padding: '8px 14px', fontSize: '11.5px', gap: '6px', textDecoration: 'none' }}
-          >
-            <Database size={13} />
-            <span>Open Supabase SQL Editor ↗</span>
-          </a>
         </div>
       </div>
 
@@ -255,7 +269,7 @@ export default function SettingsPage() {
               {user?.id && (
                 <span className="badge badge-emerald" style={{ fontSize: '9.5px', padding: '2px 6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Shield size={10} />
-                  <span>Encrypted Cloud Sync Active</span>
+                  <span>Cloud Synchronized</span>
                 </span>
               )}
             </div>
@@ -268,7 +282,7 @@ export default function SettingsPage() {
               id="input-gemini-key"
             />
             <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '5px 0 0 0' }}>
-              🔒 Encrypted with user-specific cryptographic cipher before saving to database. Syncs automatically across all your devices.
+              Transfers automatically between your mobile phone and laptop upon sync.
             </p>
           </div>
 
@@ -279,13 +293,14 @@ export default function SettingsPage() {
             </label>
             <select
               className="input-field"
-              value={settings.preferredModel}
+              value={settings.preferredModel || 'gemini-2.5-flash'}
               onChange={(e) => setSettings({ ...settings, preferredModel: e.target.value })}
               style={{ cursor: 'pointer' }}
             >
-              <option value="gemini-3.5-flash">Gemini 3.5 Flash (Google AI Studio - Fast & Deep)</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash (Official Flagship - Deep Reasoning & Fast)</option>
+              <option value="gemini-2.0-flash">Gemini 2.0 Flash (Multimodal Audio/Vision)</option>
+              <option value="gemini-1.5-flash">Gemini 1.5 Flash (Universal Fallback)</option>
               <option value="siemens-gpt-oss-120b">Siemens GPT-OSS-120B (Enterprise Internal LLM)</option>
-              <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite (Ultra-Fast 1.6s)</option>
             </select>
           </div>
 

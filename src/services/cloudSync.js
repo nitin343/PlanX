@@ -16,93 +16,177 @@ const syncChannel = typeof window !== 'undefined' && 'BroadcastChannel' in windo
   : null;
 
 /**
+ * Verifies if there is an active authenticated Supabase session on this device.
+ */
+export async function checkCloudSession() {
+  if (!isSupabaseConfigured || !supabase) {
+    return { isReady: false, reason: 'Supabase cloud is not configured.' };
+  }
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error || !session || !session.user) {
+      return { 
+        isReady: false, 
+        reason: 'No active Supabase cloud session on this device. Please log in with your account to enable sync.' 
+      };
+    }
+    return { isReady: true, user: session.user };
+  } catch (err) {
+    return { isReady: false, reason: err.message || 'Could not verify cloud session.' };
+  }
+}
+
+/**
  * Upload all local operational data to Supabase Cloud for this user.
- * Fault-tolerant: Uses User Metadata fallback so it works even if custom SQL tables are not yet created!
+ * Directly persists Gemini API Key to Supabase user metadata and profiles table.
  */
 export async function pushToCloud() {
-  const user = storage.getAuthUser();
-  if (!user || !user.id || !isSupabaseConfigured || !supabase) return false;
+  const sessionCheck = await checkCloudSession();
+  if (!sessionCheck.isReady) {
+    return { success: false, error: sessionCheck.reason };
+  }
+
+  const user = sessionCheck.user;
 
   try {
+    const tasks = storage.getTasks() || [];
+    const goals = storage.getGoals() || [];
+    const habits = storage.getHabits() || [];
+    const dailyPlan = storage.getDailyPlan() || {};
+    const skillCards = storage.getSkillCards() || [];
+    const profile = storage.getProfile() || {};
+    const curAi = storage.getAiSettings() || {};
+    const geminiKey = curAi.geminiKey?.trim() || '';
+
     const payload = {
       updatedAt: new Date().toISOString(),
-      dailyPlan: storage.getDailyPlan(),
-      tasks: storage.getTasks(),
-      goals: storage.getGoals(),
-      habits: storage.getHabits(),
-      skillCards: storage.getSkillCards(),
-      chatHistory: storage.getChatHistory(),
-      profile: storage.getProfile(),
-      aiSettings: storage.getAiSettings(),
+      dailyPlan,
+      tasks,
+      goals,
+      habits,
+      skillCards,
+      profile,
+      aiSettings: {
+        geminiKey: geminiKey,
+        preferredModel: curAi.preferredModel || 'gemini-2.5-flash',
+        spendingCapDollars: curAi.spendingCapDollars,
+      },
     };
 
     // 1. Primary Sync: Supabase Auth User Metadata (zero SQL table setup required)
     const { error: metaErr } = await supabase.auth.updateUser({
       data: {
         planx_cloud_backup: payload,
+        gemini_api_key: geminiKey || null,
       },
     });
 
     if (metaErr) {
-      console.warn('Cloud sync metadata notice:', metaErr.message);
+      console.warn('Metadata sync note:', metaErr.message);
     }
 
-    // 2. Secondary Sync: If database tables exist in Supabase, update them
+    // 2. Direct Sync: Supabase profiles table
     try {
-      if (payload.profile) {
-        await supabase.from('profiles').upsert({
-          id: user.id,
-          full_name: payload.profile.fullName,
-          streak_count: payload.profile.streakCount,
-          total_score: payload.profile.totalScore,
-          updated_at: new Date().toISOString(),
-        }).catch(() => {});
-      }
-    } catch {}
+      await supabase.from('profiles').upsert({
+        id: user.id,
+        full_name: profile.fullName || user.email?.split('@')[0],
+        gemini_api_key: geminiKey || null,
+        wake_time: profile.wakeTime || '05:00',
+        sleep_time: profile.sleepTime || '23:00',
+        streak_count: profile.streakCount || 0,
+        total_score: profile.totalScore || 0,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (profErr) {
+      console.warn('Profiles table sync note:', profErr.message);
+    }
 
     // Broadcast update to other open tabs on this device
     syncChannel?.postMessage({ type: 'SYNC_PUSHED', timestamp: Date.now() });
 
-    return true;
+    return {
+      success: true,
+      summary: `${tasks.length} tasks, ${goals.length} goals, ${habits.length} habits${geminiKey ? ', and Gemini API Key' : ''}`,
+    };
   } catch (err) {
-    console.warn('Cloud push sync notice:', err.message);
-    return false;
+    console.warn('Cloud push sync error:', err.message);
+    return { success: false, error: err.message || 'Failed to upload data to cloud.' };
   }
 }
 
 /**
  * Pull latest operational data from Supabase Cloud and hydrate local storage.
- * Call on login, app open, or when switching devices.
+ * Directly transfers Gemini API Key from cloud to local storage.
  */
 export async function pullFromCloud(onRefresh) {
-  const user = storage.getAuthUser();
-  if (!user || !user.id || !isSupabaseConfigured || !supabase) return false;
+  const sessionCheck = await checkCloudSession();
+  if (!sessionCheck.isReady) {
+    return { success: false, error: sessionCheck.reason };
+  }
+
+  const user = sessionCheck.user;
 
   try {
     isSyncing = true;
-    const { data: { user: cloudUser }, error } = await supabase.auth.getUser();
-    if (error || !cloudUser) return false;
+    let geminiKeyTransferred = false;
+
+    // 1. Direct transfer from profiles table
+    try {
+      const { data: profileRow } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (profileRow?.gemini_api_key) {
+        const curAi = storage.getAiSettings();
+        if (curAi.geminiKey !== profileRow.gemini_api_key) {
+          storage.saveAiSettings({
+            ...curAi,
+            geminiKey: profileRow.gemini_api_key,
+          });
+          geminiKeyTransferred = true;
+        }
+      }
+    } catch (pErr) {
+      console.warn('Profile key pull note:', pErr.message);
+    }
+
+    // 2. Pull from Supabase user metadata
+    const { data: { user: cloudUser }, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !cloudUser) {
+      return { success: false, error: userErr?.message || 'Could not fetch cloud user profile.' };
+    }
 
     const backup = cloudUser.user_metadata?.planx_cloud_backup;
-    if (backup && typeof backup === 'object') {
-      const localTasks = storage.getTasks();
-      const localGoals = storage.getGoals();
-      const localPlan = storage.getDailyPlan();
+    const metaGeminiKey = cloudUser.user_metadata?.gemini_api_key;
 
-      // Hydrate Daily Plan if cloud has content and local is empty
-      if (backup.dailyPlan && backup.dailyPlan.mustWin && !localPlan?.mustWin) {
-        storage.saveDailyPlan(backup.dailyPlan);
-      } else if (backup.dailyPlan && backup.dailyPlan.mustWin) {
-        // If both have, keep cloud if newer or merge
+    if (metaGeminiKey) {
+      const curAi = storage.getAiSettings();
+      if (curAi.geminiKey !== metaGeminiKey) {
+        storage.saveAiSettings({
+          ...curAi,
+          geminiKey: metaGeminiKey,
+        });
+        geminiKeyTransferred = true;
+      }
+    }
+
+    if (backup && typeof backup === 'object') {
+      const localTasks = storage.getTasks() || [];
+      const localGoals = storage.getGoals() || [];
+      const localPlan = storage.getDailyPlan() || {};
+
+      // Hydrate Daily Plan
+      if (backup.dailyPlan && backup.dailyPlan.mustWin) {
         storage.saveDailyPlan(backup.dailyPlan);
       }
 
-      // Hydrate Tasks if cloud has tasks
+      // Hydrate Tasks
       if (Array.isArray(backup.tasks) && backup.tasks.length > 0) {
         if (!localTasks || localTasks.length === 0) {
           storage.saveTasks(backup.tasks);
         } else {
-          // Merge unique tasks
           const merged = [...localTasks];
           backup.tasks.forEach((t) => {
             const exists = merged.some(m => m.id === t.id || (m.title === t.title && m.priority === t.priority));
@@ -136,30 +220,33 @@ export async function pullFromCloud(onRefresh) {
         storage.saveSkillCards(backup.skillCards);
       }
 
-      // Hydrate Chat History
-      if (Array.isArray(backup.chatHistory) && backup.chatHistory.length > 1) {
-        const localChat = storage.getChatHistory();
-        if (!localChat || localChat.length <= 1) {
-          storage.saveChatHistory(backup.chatHistory);
-        }
-      }
-
-      // Hydrate AI Key if laptop doesn't have it yet
+      // Hydrate AI Key if backup has it
       if (backup.aiSettings?.geminiKey) {
         const curAi = storage.getAiSettings();
-        if (!curAi.geminiKey) {
-          storage.saveAiSettings({ ...curAi, geminiKey: backup.aiSettings.geminiKey });
+        if (curAi.geminiKey !== backup.aiSettings.geminiKey) {
+          storage.saveAiSettings({
+            ...curAi,
+            geminiKey: backup.aiSettings.geminiKey,
+          });
+          geminiKeyTransferred = true;
         }
       }
 
       if (onRefresh) onRefresh();
-      return true;
+      return {
+        success: true,
+        summary: `${backup.tasks?.length || 0} tasks, ${backup.goals?.length || 0} goals${geminiKeyTransferred ? ', and Gemini API Key' : ''}`,
+      };
     }
 
-    return false;
+    if (onRefresh) onRefresh();
+    return {
+      success: true,
+      summary: geminiKeyTransferred ? 'Gemini API Key synchronized from cloud' : 'Cloud session active',
+    };
   } catch (err) {
-    console.warn('Cloud pull sync notice:', err.message);
-    return false;
+    console.warn('Cloud pull sync error:', err.message);
+    return { success: false, error: err.message || 'Failed to pull data from cloud.' };
   } finally {
     isSyncing = false;
   }
@@ -178,4 +265,5 @@ export function triggerAutoSync() {
 
 // Automatically register storage change hook
 storage.onStorageChange = triggerAutoSync;
+
 

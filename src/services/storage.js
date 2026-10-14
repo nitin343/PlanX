@@ -431,7 +431,7 @@ export const storage = {
     const parsed = data ? JSON.parse(data) : {};
     return {
       geminiKey: storage._decryptVal(parsed.geminiKey || ''), // Decrypted on read
-      preferredModel: parsed.preferredModel || 'gemini-3.5-flash',
+      preferredModel: (parsed.preferredModel && !parsed.preferredModel.includes('3.5')) ? parsed.preferredModel : 'gemini-2.5-flash',
       siemensEndpoint: parsed.siemensEndpoint || '',
       siemensKey: storage._decryptVal(parsed.siemensKey || ''),
       siemensModel: parsed.siemensModel || 'siemens-default',
