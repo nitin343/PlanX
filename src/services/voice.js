@@ -33,10 +33,22 @@ export async function transcribeWithGemini(audioBlob) {
   }
 
   const base64Data = await blobToBase64(audioBlob);
-  const mimeType = audioBlob.type?.split(';')[0] || 'audio/webm';
-  const modelName = settings.preferredModel || 'gemini-2.5-flash';
+  let mimeType = audioBlob.type?.split(';')[0] || 'audio/webm';
+  if (mimeType.includes('mp4') || mimeType.includes('m4a')) {
+    mimeType = 'audio/mp4';
+  } else if (mimeType.includes('ogg')) {
+    mimeType = 'audio/ogg';
+  } else if (mimeType.includes('wav')) {
+    mimeType = 'audio/wav';
+  } else {
+    mimeType = 'audio/webm';
+  }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+  // Use official multimodal audio model on Google AI Studio
+  let modelName = 'gemini-1.5-flash';
+  if (settings.preferredModel && !settings.preferredModel.includes('3.')) {
+    modelName = settings.preferredModel;
+  }
 
   const payload = {
     contents: [
@@ -50,37 +62,53 @@ export async function transcribeWithGemini(audioBlob) {
             },
           },
           {
-            text: 'Transcribe this voice speech verbatim into clear, natural text with correct spelling and punctuation. If technical coding terms like PyTorch, LeetCode, Transformers, or JavaScript are mentioned, transcribe them accurately. Output ONLY the transcribed text. Do NOT add preamble, quotes, explanations, or formatting.',
+            text: 'Transcribe this voice speech verbatim into natural, accurate text. If technical programming terms like PyTorch, LeetCode, Transformers, or JavaScript are mentioned, transcribe them accurately. Output ONLY the transcribed text. Do NOT add commentary, explanations, or quotes.',
           },
         ],
       },
     ],
     generationConfig: {
-      temperature: 0.2,
+      temperature: 0.1,
       maxOutputTokens: 500,
     },
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const candidateModels = [
+    modelName,
+    'gemini-1.5-flash',
+    'gemini-2.0-flash',
+    'gemini-2.5-flash',
+  ].filter((m, idx, self) => self.indexOf(m) === idx);
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Gemini audio transcription failed (${response.status})`);
+  let lastError = null;
+  for (const model of candidateModels) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        let transcript = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (transcript) {
+          // Strip unnecessary quotes wrapped by LLM
+          transcript = transcript.replace(/^["']|["']$/g, '').trim();
+          storage.incrementAiMetrics(150, false);
+          return transcript;
+        }
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        lastError = new Error(errJson?.error?.message || `Model ${model} returned status ${res.status}`);
+      }
+    } catch (netErr) {
+      lastError = netErr;
+    }
   }
 
-  const data = await response.json();
-  const transcript = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-  
-  if (!transcript) {
-    throw new Error('No speech detected in audio.');
-  }
-
-  storage.incrementAiMetrics(150, false);
-  return transcript;
+  throw lastError || new Error('Audio transcription failed across all candidate models.');
 }
 
 /**
@@ -91,11 +119,12 @@ export async function transcribeWithGemini(audioBlob) {
  *    sends audio to Gemini multimodal STT for state-of-the-art transcription.
  */
 export class VoiceTranscriber {
-  constructor({ onInterim, onFinal, onError, onStateChange }) {
+  constructor({ onInterim, onFinal, onError, onStateChange, onProcessing }) {
     this.onInterim = onInterim || (() => {});
     this.onFinal = onFinal || (() => {});
     this.onError = onError || (() => {});
     this.onStateChange = onStateChange || (() => {});
+    this.onProcessing = onProcessing || (() => {});
 
     this.isRecording = false;
     this.mediaRecorder = null;
@@ -222,28 +251,34 @@ export class VoiceTranscriber {
       this.stream.getTracks().forEach((track) => track.stop());
     }
 
-    // If browser speech recognition already captured words, deliver immediately!
+    // 1. If browser speech recognition already captured words, deliver immediately!
     if (this.hasBrowserTranscript && this.latestBrowserText.trim()) {
       this.onFinal(this.latestBrowserText.trim());
       return;
     }
 
-    // Otherwise, use Gemini multimodal Speech-to-Text on the recorded audio blob
+    // 2. Otherwise, use Gemini multimodal Speech-to-Text on the recorded audio blob
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       await new Promise((resolve) => {
         this.mediaRecorder.onstop = resolve;
-        this.mediaRecorder.stop();
+        try { this.mediaRecorder.stop(); } catch { resolve(); }
       });
 
       if (this.audioChunks.length > 0) {
-        const audioBlob = new Blob(this.audioChunks, { type: this.mediaRecorder.mimeType || 'audio/webm' });
-        if (audioBlob.size > 2000) {
+        const audioBlob = new Blob(this.audioChunks, { type: this.mediaRecorder?.mimeType || 'audio/webm' });
+        if (audioBlob.size > 1500) {
           try {
-            this.onInterim('Transcribing speech with Gemini AI...');
+            this.onProcessing(true);
             const geminiTranscript = await transcribeWithGemini(audioBlob);
+            this.onProcessing(false);
             this.onFinal(geminiTranscript);
             return;
           } catch (geminiErr) {
+            this.onProcessing(false);
+            if (this.latestBrowserText.trim()) {
+              this.onFinal(this.latestBrowserText.trim());
+              return;
+            }
             this.onError(geminiErr);
             return;
           }

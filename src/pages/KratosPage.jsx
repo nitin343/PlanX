@@ -426,11 +426,20 @@ export default function KratosPage({ onNavigateTab, onRefresh }) {
   const [isLoading, setIsLoading] = useState(false);
   const [metrics, setMetrics] = useState(() => storage.getAiMetrics());
   const messagesEndRef = useRef(null);
+  const textareaRef = useRef(null);
   const aiSettings = storage.getAiSettings();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = Math.min(Math.max(scrollHeight, 46), 130) + 'px';
+    }
+  }, [input]);
 
   const handleSend = async (textToSend) => {
     const text = typeof textToSend === 'string' ? textToSend : input;
@@ -795,23 +804,40 @@ export default function KratosPage({ onNavigateTab, onRefresh }) {
       <form 
         onSubmit={(e) => { e.preventDefault(); handleSend(); }}
         style={{
-          padding: '12px 16px',
-          background: 'rgba(10, 14, 22, 0.95)',
+          padding: '12px 14px',
+          background: 'rgba(10, 14, 22, 0.98)',
           borderTop: '1px solid var(--border-subtle)',
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-end',
           gap: '8px',
         }}
       >
-        <input
-          type="text"
+        <textarea
+          ref={textareaRef}
           className="input-field"
-          placeholder="Speak to KRATOS or tap mic to voice type..."
+          rows={1}
+          placeholder="Speak to KRATOS or type command... (Enter sends, Shift+Enter for newline)"
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
           disabled={isLoading}
           id="input-kratos-chat"
-          style={{ flex: 1 }}
+          style={{ 
+            flex: 1,
+            minHeight: '46px',
+            maxHeight: '130px',
+            resize: 'none',
+            fontSize: '14.5px',
+            lineHeight: '1.45',
+            padding: '11px 14px',
+            borderRadius: '16px',
+            background: 'rgba(18, 24, 38, 0.9)',
+          }}
         />
         
         {/* ChatGPT-style Voice Dictation Mic Button */}
@@ -826,13 +852,24 @@ export default function KratosPage({ onNavigateTab, onRefresh }) {
           }}
           size={18}
           id="btn-voice-kratos-chat"
+          style={{ width: '42px', height: '42px', marginBottom: '2px' }}
         />
 
         <button 
           type="submit" 
           className="btn btn-crimson"
           disabled={isLoading || !input.trim()}
-          style={{ width: '40px', height: '40px', padding: 0, borderRadius: '50%', flexShrink: 0 }}
+          style={{ 
+            width: '42px', 
+            height: '42px', 
+            padding: 0, 
+            borderRadius: '50%', 
+            flexShrink: 0,
+            marginBottom: '2px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
           id="btn-send-kratos-chat"
           title="Send Command"
         >

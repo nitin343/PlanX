@@ -535,7 +535,7 @@ export default function GoalsPage() {
           ======================================================== */}
       {isAiForgeOpen && (
         <div className="modal-overlay" onClick={() => setIsAiForgeOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ padding: '24px' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ padding: '24px 20px calc(42px + env(safe-area-inset-bottom, 24px)) 20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Sparkles size={20} color="var(--crimson-core)" />
@@ -650,7 +650,7 @@ export default function GoalsPage() {
           ======================================================== */}
       {isManualModalOpen && (
         <div className="modal-overlay" onClick={() => setIsManualModalOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ padding: '24px' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ padding: '24px 20px calc(42px + env(safe-area-inset-bottom, 24px)) 20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Target size={20} color="#00f2fe" />

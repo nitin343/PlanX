@@ -28,6 +28,9 @@ export default function VoiceMicButton({
           onTranscript(text, true);
         }
       },
+      onProcessing: (processing) => {
+        setIsTranscribing(processing);
+      },
       onStateChange: (active) => {
         setIsRecording(active);
         if (!active) {
@@ -147,6 +150,34 @@ export default function VoiceMicButton({
           />
           <span style={{ color: '#ff2a5f' }}>Listening...</span>
           <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Tap to finish</span>
+        </div>
+      )}
+
+      {/* Floating Transcribing Indicator Banner */}
+      {isTranscribing && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '46px',
+            right: '0',
+            background: 'rgba(10, 14, 24, 0.95)',
+            border: '1px solid rgba(0, 242, 254, 0.5)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
+            borderRadius: '20px',
+            padding: '5px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '11px',
+            fontWeight: 800,
+            color: '#fff',
+            whiteSpace: 'nowrap',
+            zIndex: 100,
+            animation: 'fadeIn 0.2s ease',
+          }}
+        >
+          <Loader2 size={12} style={{ color: '#00f2fe', animation: 'spin 1s linear infinite' }} />
+          <span style={{ color: '#00f2fe' }}>Transcribing speech...</span>
         </div>
       )}
 

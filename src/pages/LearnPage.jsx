@@ -413,7 +413,7 @@ export default function LearnPage() {
           ======================================================== */}
       {isAiForgeOpen && (
         <div className="modal-overlay" onClick={() => setIsAiForgeOpen(false)}>
-          <div className="modal-content card-glass" style={{ maxWidth: '520px', width: '95%', padding: '22px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal-content card-glass" style={{ maxWidth: '520px', width: '95%', padding: '22px 20px calc(42px + env(safe-area-inset-bottom, 24px)) 20px' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Sparkles size={18} color="var(--crimson-core)" />
@@ -595,7 +595,7 @@ export default function LearnPage() {
           ======================================================== */}
       {isAddOpen && (
         <div className="modal-overlay" onClick={() => setIsAddOpen(false)}>
-          <div className="modal-content card-glass" style={{ maxWidth: '480px', width: '95%', padding: '22px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal-content card-glass" style={{ maxWidth: '480px', width: '95%', padding: '22px 20px calc(42px + env(safe-area-inset-bottom, 24px)) 20px' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Edit3 size={18} color="var(--crimson-core)" />

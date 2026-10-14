@@ -56,7 +56,7 @@ export default function NightReviewModal({ isOpen, onClose, tasks = [], onComple
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ padding: '24px' }}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ padding: '24px 20px calc(42px + env(safe-area-inset-bottom, 24px)) 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Moon size={20} color="#ffd000" />

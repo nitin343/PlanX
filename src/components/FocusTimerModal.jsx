@@ -74,7 +74,7 @@ export default function FocusTimerModal({ isOpen, onClose, taskTitle = 'Deep Wor
         className="modal-content" 
         onClick={(e) => e.stopPropagation()} 
         style={{
-          padding: '28px',
+          padding: '24px 20px calc(42px + env(safe-area-inset-bottom, 24px)) 20px',
           textAlign: 'center',
           background: 'linear-gradient(180deg, #0e1320 0%, #07090e 100%)',
         }}
