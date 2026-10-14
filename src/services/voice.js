@@ -127,23 +127,93 @@ export class VoiceTranscriber {
     this.onProcessing = onProcessing || (() => {});
 
     this.isRecording = false;
+    this.engine = null; // 'speechRecognition' | 'mediaRecorder'
     this.mediaRecorder = null;
     this.audioChunks = [];
     this.speechRecognition = null;
     this.stream = null;
-    this.hasBrowserTranscript = false;
-    this.latestBrowserText = '';
+    this.latestText = '';
   }
 
   async start() {
     if (this.isRecording) return;
-    this.hasBrowserTranscript = false;
-    this.latestBrowserText = '';
+    this.latestText = '';
     this.audioChunks = [];
 
-    // 1. Check microphone support
+    // 1. HIGH-END FREE NEURAL ENGINE: Web Speech API (Chrome Android, Desktop, Safari iOS, Edge)
+    // 100% FREE, Zero Sign-in, Zero API key required!
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+        recognition.maxAlternatives = 1;
+
+        recognition.onstart = () => {
+          this.isRecording = true;
+          this.engine = 'speechRecognition';
+          this.onStateChange(true);
+        };
+
+        recognition.onresult = (event) => {
+          let interimText = '';
+          let finalText = '';
+
+          for (let i = 0; i < event.results.length; ++i) {
+            const res = event.results[i];
+            if (res.isFinal) {
+              finalText += res[0].transcript;
+            } else {
+              interimText += res[0].transcript;
+            }
+          }
+
+          const current = (finalText + ' ' + interimText).trim();
+          if (current) {
+            this.latestText = current;
+            this.onInterim(current);
+          }
+        };
+
+        recognition.onerror = (e) => {
+          console.warn('SpeechRecognition event note:', e.error);
+          if (e.error === 'not-allowed' || e.error === 'permission-denied') {
+            this.isRecording = false;
+            this.onStateChange(false);
+            this.onError(new Error('Microphone permission denied. Allow mic access in browser.'));
+          } else if (e.error !== 'no-speech') {
+            // Keep going unless fatal
+          }
+        };
+
+        recognition.onend = () => {
+          if (this.isRecording && this.engine === 'speechRecognition') {
+            // Mobile Chrome can sometimes pause on silence; cleanly restart while recording is active
+            try {
+              recognition.start();
+            } catch {
+              // Ignore if already active
+            }
+          }
+        };
+
+        this.speechRecognition = recognition;
+        recognition.start();
+        this.isRecording = true;
+        this.engine = 'speechRecognition';
+        this.onStateChange(true);
+        return;
+      } catch (nativeErr) {
+        console.warn('SpeechRecognition direct start exception, trying MediaRecorder fallback:', nativeErr);
+      }
+    }
+
+    // 2. FALLBACK ENGINE: Only for browsers lacking Web Speech API (Firefox)
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      this.onError(new Error('Microphone access is not supported on this browser.'));
+      this.onError(new Error('Microphone access is not supported on this browser. Use Chrome or Safari.'));
       return;
     }
 
@@ -156,75 +226,26 @@ export class VoiceTranscriber {
         } 
       });
 
-      // 2. Setup MediaRecorder for Gemini fallback / audio capture
       let mimeType = 'audio/webm';
       if (typeof MediaRecorder !== 'undefined') {
         if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
           mimeType = 'audio/webm;codecs=opus';
         } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
           mimeType = 'audio/mp4';
-        } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-          mimeType = 'audio/ogg';
-        }
-
-        try {
-          this.mediaRecorder = new MediaRecorder(this.stream, { mimeType });
-        } catch {
-          this.mediaRecorder = new MediaRecorder(this.stream);
-        }
-
-        this.mediaRecorder.ondataavailable = (event) => {
-          if (event.data && event.data.size > 0) {
-            this.audioChunks.push(event.data);
-          }
-        };
-
-        this.mediaRecorder.start(250); // Slice chunks every 250ms
-      }
-
-      // 3. Setup Web Speech API for real-time live streaming dictation
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        try {
-          this.speechRecognition = new SpeechRecognition();
-          this.speechRecognition.continuous = true;
-          this.speechRecognition.interimResults = true;
-          this.speechRecognition.lang = 'en-US';
-
-          this.speechRecognition.onresult = (event) => {
-            let interimText = '';
-            let finalText = '';
-
-            for (let i = 0; i < event.results.length; ++i) {
-              const res = event.results[i];
-              if (res.isFinal) {
-                finalText += res[0].transcript;
-              } else {
-                interimText += res[0].transcript;
-              }
-            }
-
-            const current = (finalText + ' ' + interimText).trim();
-            if (current) {
-              this.hasBrowserTranscript = true;
-              this.latestBrowserText = current;
-              this.onInterim(current);
-            }
-          };
-
-          this.speechRecognition.onerror = (e) => {
-            // Non-fatal, MediaRecorder Gemini fallback will handle transcription
-            console.warn('SpeechRecognition event error (Gemini fallback ready):', e.error);
-          };
-
-          this.speechRecognition.start();
-        } catch (srErr) {
-          console.warn('SpeechRecognition init note:', srErr);
         }
       }
 
+      this.mediaRecorder = new MediaRecorder(this.stream, { mimeType });
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          this.audioChunks.push(event.data);
+        }
+      };
+
+      this.engine = 'mediaRecorder';
       this.isRecording = true;
       this.onStateChange(true);
+      this.mediaRecorder.start(250);
     } catch (micErr) {
       this.isRecording = false;
       this.onStateChange(false);
@@ -239,30 +260,33 @@ export class VoiceTranscriber {
     this.isRecording = false;
     this.onStateChange(false);
 
-    // Stop SpeechRecognition if active
-    if (this.speechRecognition) {
-      try {
-        this.speechRecognition.stop();
-      } catch {}
-    }
+    // 1. Native Web Speech Engine finish (Instant, Free, No Sign-In)
+    if (this.engine === 'speechRecognition') {
+      if (this.speechRecognition) {
+        try {
+          this.speechRecognition.onend = null; // Unbind auto-restart
+          this.speechRecognition.stop();
+        } catch {}
+      }
 
-    // Stop tracks
-    if (this.stream) {
-      this.stream.getTracks().forEach((track) => track.stop());
-    }
-
-    // 1. If browser speech recognition already captured words, deliver immediately!
-    if (this.hasBrowserTranscript && this.latestBrowserText.trim()) {
-      this.onFinal(this.latestBrowserText.trim());
+      if (this.latestText.trim()) {
+        this.onFinal(this.latestText.trim());
+      } else {
+        this.onError(new Error('No speech detected. Please speak closer to the microphone.'));
+      }
       return;
     }
 
-    // 2. Otherwise, use Gemini multimodal Speech-to-Text on the recorded audio blob
+    // 2. Fallback MediaRecorder finish
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       await new Promise((resolve) => {
         this.mediaRecorder.onstop = resolve;
         try { this.mediaRecorder.stop(); } catch { resolve(); }
       });
+
+      if (this.stream) {
+        this.stream.getTracks().forEach((track) => track.stop());
+      }
 
       if (this.audioChunks.length > 0) {
         const audioBlob = new Blob(this.audioChunks, { type: this.mediaRecorder?.mimeType || 'audio/webm' });
@@ -275,10 +299,6 @@ export class VoiceTranscriber {
             return;
           } catch (geminiErr) {
             this.onProcessing(false);
-            if (this.latestBrowserText.trim()) {
-              this.onFinal(this.latestBrowserText.trim());
-              return;
-            }
             this.onError(geminiErr);
             return;
           }
@@ -286,9 +306,7 @@ export class VoiceTranscriber {
       }
     }
 
-    if (!this.latestBrowserText.trim()) {
-      this.onError(new Error('No speech captured. Speak closer to the microphone.'));
-    }
+    this.onError(new Error('No speech captured. Speak closer to the microphone.'));
   }
 
   toggle() {
