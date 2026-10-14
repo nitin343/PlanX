@@ -510,7 +510,7 @@ export default function KratosPage({ onNavigateTab, onRefresh }) {
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 145px)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - 58px - var(--bottom-bar-height, 72px) - env(safe-area-inset-bottom, 0px))' }}>
       {/* Top AI Metrics Bar */}
       <div 
         style={{

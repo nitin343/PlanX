@@ -83,7 +83,7 @@ export default function App() {
       />
 
       {/* Main Tab Content */}
-      <main style={{ flex: 1, paddingBottom: 'calc(var(--bottom-bar-height, 72px) + env(safe-area-inset-bottom, 16px) + 24px)' }}>
+      <main style={{ flex: 1, paddingBottom: activeTab === 'kratos' ? 0 : 'calc(var(--bottom-bar-height, 72px) + env(safe-area-inset-bottom, 16px) + 24px)' }}>
         {activeTab === 'today' && (
           <TodayPage
             key={`today-${refreshKey}`}
