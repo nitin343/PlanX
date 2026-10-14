@@ -249,6 +249,12 @@ export const storage = {
     return user && user.id ? `planx_${user.id}_${baseKey}` : `planx_guest_${baseKey}`;
   },
 
+  _notifyChange: () => {
+    if (typeof storage.onStorageChange === 'function') {
+      try { storage.onStorageChange(); } catch {}
+    }
+  },
+
   getProfile: () => {
     const key = storage.getUserKey('profile');
     const data = localStorage.getItem(key);
@@ -272,6 +278,7 @@ export const storage = {
   },
   saveProfile: (profile) => {
     localStorage.setItem(storage.getUserKey('profile'), JSON.stringify(profile));
+    storage._notifyChange();
   },
 
   getDailyPlan: () => {
@@ -306,6 +313,7 @@ export const storage = {
   },
   saveDailyPlan: (plan) => {
     localStorage.setItem(storage.getUserKey('daily_plan'), JSON.stringify(plan));
+    storage._notifyChange();
   },
 
   getTasks: () => {
@@ -321,6 +329,7 @@ export const storage = {
   },
   saveTasks: (tasks) => {
     localStorage.setItem(storage.getUserKey('tasks'), JSON.stringify(tasks));
+    storage._notifyChange();
   },
 
   getGoals: () => {
@@ -336,6 +345,7 @@ export const storage = {
   },
   saveGoals: (goals) => {
     localStorage.setItem(storage.getUserKey('goals'), JSON.stringify(goals));
+    storage._notifyChange();
   },
 
   getHabits: () => {
@@ -351,6 +361,7 @@ export const storage = {
   },
   saveHabits: (habits) => {
     localStorage.setItem(storage.getUserKey('habits'), JSON.stringify(habits));
+    storage._notifyChange();
   },
 
   getSkillCards: () => {
@@ -364,6 +375,7 @@ export const storage = {
   },
   saveSkillCards: (cards) => {
     localStorage.setItem(storage.getUserKey('skill_cards'), JSON.stringify(cards));
+    storage._notifyChange();
   },
 
   getMemoryCards: () => {
@@ -552,6 +564,7 @@ export const storage = {
       scores.unshift(scoreObj);
     }
     localStorage.setItem(storage.getUserKey('day_scores'), JSON.stringify(scores));
+    storage._notifyChange();
   },
 
   getChatHistory: () => {
@@ -571,6 +584,7 @@ export const storage = {
   },
   saveChatHistory: (msgs) => {
     localStorage.setItem(storage.getUserKey('ai_chat'), JSON.stringify(msgs));
+    storage._notifyChange();
   },
 
   clearUserSession: (currentUserId) => {

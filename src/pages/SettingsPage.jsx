@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { storage } from '../services/storage';
 import { isSupabaseConfigured } from '../services/supabase';
 import { callGemini, callSiemensLLM } from '../services/ai';
+import { pushToCloud, pullFromCloud } from '../services/cloudSync';
 import { 
   getNotificationPermissionStatus, 
   requestNotificationPermission, 
@@ -27,6 +28,24 @@ export default function SettingsPage() {
   const [siemensTestResult, setSiemensTestResult] = useState(null);
   const [isTestingSiemens, setIsTestingSiemens] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [syncMsg, setSyncMsg] = useState(null);
+  const [schemaCopied, setSchemaCopied] = useState(false);
+
+  const handleManualSync = async () => {
+    setIsSyncingCloud(true);
+    setSyncMsg('Connecting to Supabase Cloud & synchronizing progress...');
+    try {
+      await pushToCloud();
+      await pullFromCloud();
+      setSyncMsg('✓ Synced! All tasks, goals, habits & daily plans unified across Mobile & Laptop.');
+    } catch (e) {
+      setSyncMsg(`Sync alert: ${e.message}`);
+    } finally {
+      setIsSyncingCloud(false);
+      setTimeout(() => setSyncMsg(null), 5000);
+    }
+  };
 
   const handleSave = async () => {
     storage.saveAiSettings(settings);
@@ -155,29 +174,67 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Supabase Status Banner */}
+      {/* Supabase Status & Cross-Device Sync Banner */}
       <div 
         className="card-glass" 
         style={{ 
-          padding: '14px 16px',
-          borderColor: isSupabaseConfigured ? 'rgba(0, 245, 160, 0.3)' : 'rgba(255, 208, 0, 0.3)',
+          padding: '16px',
+          borderColor: isSupabaseConfigured ? 'rgba(0, 245, 160, 0.4)' : 'rgba(255, 208, 0, 0.3)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Database size={18} color={isSupabaseConfigured ? '#00f5a0' : '#ffd000'} />
             <div>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>
-                Supabase Backend Sync
+              <div style={{ fontSize: '13px', fontWeight: 800, color: '#fff' }}>
+                Cross-Device Cloud Sync (Mobile &harr; Laptop)
               </div>
               <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                {isSupabaseConfigured ? 'Connected: https://bdpqjwpxvjseagxlhzho.supabase.co' : 'Using Local Offline Storage Engine'}
+                {isSupabaseConfigured ? 'Supabase Project: bdpqjwpxvjseagxlhzho.supabase.co' : 'Local Offline Engine'}
               </div>
             </div>
           </div>
           <span className={`badge ${isSupabaseConfigured ? 'badge-emerald' : 'badge-gold'}`}>
             {isSupabaseConfigured ? 'ONLINE' : 'LOCAL'}
           </span>
+        </div>
+
+        <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 12px 0' }}>
+          {user?.id ? (
+            <>Logged in as <strong>{user.email || 'Operator'}</strong>. Your tactical battle plan, mission checklist, habits, and roadmaps sync automatically between your phone and laptop.</>
+          ) : (
+            <>Log in to sync your tasks, goals, habits, and daily plans between your mobile and laptop devices seamlessly.</>
+          )}
+        </p>
+
+        {syncMsg && (
+          <div style={{ padding: '8px 12px', background: 'rgba(0, 245, 160, 0.1)', border: '1px solid #00f5a0', borderRadius: '6px', color: '#00f5a0', fontSize: '11.5px', fontWeight: 700, marginBottom: '10px' }}>
+            {syncMsg}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          <button
+            type="button"
+            onClick={handleManualSync}
+            disabled={isSyncingCloud || !user?.id}
+            className="btn btn-primary"
+            style={{ padding: '8px 14px', fontSize: '11.5px', gap: '6px', fontWeight: 800 }}
+          >
+            <RefreshCw size={13} className={isSyncingCloud ? 'animate-spin' : ''} />
+            <span>{isSyncingCloud ? 'Syncing...' : 'Sync Across Devices Now'}</span>
+          </button>
+
+          <a
+            href="https://supabase.com/dashboard/project/bdpqjwpxvjseagxlhzho/sql/new"
+            target="_blank"
+            rel="noreferrer"
+            className="btn btn-secondary"
+            style={{ padding: '8px 14px', fontSize: '11.5px', gap: '6px', textDecoration: 'none' }}
+          >
+            <Database size={13} />
+            <span>Open Supabase SQL Editor ↗</span>
+          </a>
         </div>
       </div>
 

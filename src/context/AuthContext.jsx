@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 import { storage } from '../services/storage';
+import { pullFromCloud, pushToCloud } from '../services/cloudSync';
 
 const AuthContext = createContext(null);
 
@@ -89,6 +90,7 @@ export function AuthProvider({ children }) {
     if (localUser) {
       setUser(localUser);
       syncCloudProfile(localUser).catch(() => {});
+      pullFromCloud(() => setProfile(storage.getProfile())).catch(() => {});
     }
 
     if (isSupabaseConfigured && supabase) {
@@ -97,6 +99,7 @@ export function AuthProvider({ children }) {
           storage.setAuthUser(session.user);
           setUser(session.user);
           await syncCloudProfile(session.user);
+          await pullFromCloud(() => setProfile(storage.getProfile()));
           setProfile(storage.getProfile());
         } else {
           // Cloud session is null (or offline/unconfirmed email user)
@@ -124,6 +127,7 @@ export function AuthProvider({ children }) {
           storage.setAuthUser(session.user);
           setUser(session.user);
           await syncCloudProfile(session.user);
+          await pullFromCloud(() => setProfile(storage.getProfile()));
           setProfile(storage.getProfile());
         }
       });
@@ -179,6 +183,7 @@ export function AuthProvider({ children }) {
           storage.setAuthUser(data.user);
           setUser(data.user);
           await syncCloudProfile(data.user);
+          await pullFromCloud(() => setProfile(storage.getProfile()));
           setProfile(storage.getProfile());
           return data;
         }
@@ -424,6 +429,8 @@ export function AuthProvider({ children }) {
         incrementStreak,
         syncAiKeyToCloud,
         syncCloudProfile,
+        pullFromCloud,
+        pushToCloud,
       }}
     >
       {children}
